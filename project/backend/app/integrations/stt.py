@@ -5,6 +5,8 @@ import os
 from io import BytesIO
 from typing import Any, Protocol
 
+import httpx
+
 
 class STTError(Exception):
     pass
@@ -17,6 +19,53 @@ class STTClient(Protocol):
         filename: str,
         content_type: str,
     ) -> str: ...
+
+
+class OpenAIWhisperSTT:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = "whisper-1",
+        base_url: str = "https://api.openai.com/v1",
+        timeout: float = 60.0,
+        language: str = "ru",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._base_url = base_url.rstrip("/")
+        self._language = language
+        self._client = client or httpx.AsyncClient(timeout=timeout)
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def transcribe(
+        self,
+        audio: bytes,
+        filename: str,
+        content_type: str,
+    ) -> str:
+        try:
+            response = await self._client.post(
+                f"{self._base_url}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                files={"file": (filename, audio, content_type)},
+                data={
+                    "model": self._model,
+                    "language": self._language,
+                    "response_format": "json",
+                },
+            )
+            response.raise_for_status()
+            text = response.json().get("text")
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            raise STTError("STT API request failed") from exc
+
+        if not isinstance(text, str):
+            raise STTError("STT API returned no text")
+        return text.strip()
 
 
 class FasterWhisperSTT:
@@ -75,6 +124,9 @@ class FasterWhisperSTT:
 
 
 class UnavailableSTT:
+    def __init__(self, reason: str = "STT is disabled") -> None:
+        self._reason = reason
+
     async def transcribe(
         self,
         audio: bytes,
@@ -82,14 +134,25 @@ class UnavailableSTT:
         content_type: str,
     ) -> str:
         del audio, filename, content_type
-        raise STTError("STT is disabled")
+        raise STTError(self._reason)
 
 
 def build_stt_from_env() -> STTClient:
-    provider = os.getenv("STT_PROVIDER", "faster-whisper").strip().lower()
+    provider = os.getenv("STT_PROVIDER", "api").strip().lower()
     if provider in {"none", "off", "unavailable"}:
         return UnavailableSTT()
-    if provider in {"faster-whisper", "faster_whisper"}:
+    if provider in {"api", "openai", "openai-compatible", "openai_compatible"}:
+        api_key = os.getenv("STT_API_KEY", "").strip()
+        if not api_key:
+            return UnavailableSTT("STT_API_KEY is not configured")
+        return OpenAIWhisperSTT(
+            api_key=api_key,
+            model=os.getenv("STT_MODEL", "whisper-1"),
+            base_url=os.getenv("STT_BASE_URL", "https://api.openai.com/v1"),
+            timeout=float(os.getenv("STT_TIMEOUT", "60")),
+            language=os.getenv("STT_LANGUAGE", "ru"),
+        )
+    if provider in {"faster-whisper", "faster_whisper", "local"}:
         return FasterWhisperSTT(
             model_size=os.getenv("STT_MODEL", "small"),
             device=os.getenv("STT_DEVICE", "cpu"),
