@@ -1,8 +1,10 @@
+import uuid
+
 import pytest
 
 from app.schemas.tools import CreateEventArgs
 from app.services.assistant import ClarificationNeeded
-from app.services.assistant_tools import DbToolExecutor
+from app.services.assistant_tools import DbToolExecutor, _as_uuid
 
 
 @pytest.mark.asyncio
@@ -29,3 +31,10 @@ def test_period_week_starts_today() -> None:
     assert start is not None
     assert end is not None
     assert (end - start).days == 7
+
+
+def test_as_uuid_accepts_uuid_and_string() -> None:
+    value = uuid.uuid4()
+
+    assert _as_uuid(value) is value
+    assert _as_uuid(str(value)) == value

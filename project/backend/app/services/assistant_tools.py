@@ -46,6 +46,12 @@ def _error(code: str) -> dict[str, str]:
     return {"error": code, "message": _ERROR_MESSAGES.get(code, code)}
 
 
+def _as_uuid(value: Any) -> UUID:
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
+
+
 def _zone(timezone: str) -> ZoneInfo:
     try:
         return ZoneInfo(timezone)
@@ -131,7 +137,7 @@ class DbToolExecutor:
 
         async with SessionLocal() as db:
             try:
-                event = await EventService(db).create(UUID(user_id), payload)
+                event = await EventService(db).create(_as_uuid(user_id), payload)
             except (ConflictError, DomainValidationError) as exc:
                 return _error(str(exc))
         return _event_payload(event)
@@ -172,7 +178,7 @@ class DbToolExecutor:
         async with SessionLocal() as db:
             try:
                 event = await EventService(db).update(
-                    UUID(user_id),
+                    _as_uuid(user_id),
                     event_id,
                     patch,
                 )
@@ -194,7 +200,7 @@ class DbToolExecutor:
 
         async with SessionLocal() as db:
             try:
-                event = await EventService(db).complete(UUID(user_id), event_id)
+                event = await EventService(db).complete(_as_uuid(user_id), event_id)
             except NotFoundError as exc:
                 return _error(str(exc))
         return _event_payload(event)
@@ -213,7 +219,7 @@ class DbToolExecutor:
 
         async with SessionLocal() as db:
             try:
-                await EventService(db).delete(UUID(user_id), event_id)
+                await EventService(db).delete(_as_uuid(user_id), event_id)
             except NotFoundError as exc:
                 return _error(str(exc))
         return {"deleted": True, "event_id": str(event_id)}
@@ -228,7 +234,7 @@ class DbToolExecutor:
         async with SessionLocal() as db:
             try:
                 events = await EventService(db).list(
-                    UUID(user_id),
+                    _as_uuid(user_id),
                     start=start,
                     end=end,
                 )
@@ -247,7 +253,7 @@ class DbToolExecutor:
         async with SessionLocal() as db:
             try:
                 hits = await SearchService(db).search(
-                    UUID(user_id),
+                    _as_uuid(user_id),
                     args.query,
                     request,
                 )
