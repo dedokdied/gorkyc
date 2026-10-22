@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from app.integrations.llm import LLMClient, TOOL_SCHEMAS, ToolCall
+from app.integrations.llm import TOOL_SCHEMAS, LLMClient, ToolCall
 from app.schemas.chat import (
     ActionInfo,
     ChatResponse,

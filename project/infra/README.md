@@ -18,18 +18,35 @@ infra/
 
 ## Docker Compose: Telegram MVP
 
-- `postgres:16` с расширениями `vector`, `pg_trgm`, `btree_gist`.
-- `api` — FastAPI, миграции, APScheduler напоминаний.
+- `postgres` — `pgvector/pgvector:pg16` с `pg_trgm` и `vector`.
+- `api` — FastAPI, миграции Alembic; APScheduler напоминаний — после MVP.
 - `bot` — aiogram, long polling, зависит от `api`.
 - `frontend` — **не добавляем на MVP**, только на этапе 2.
 
 Публичный webhook боту не нужен: long polling. API наружу не публикуем,
 бот ходит по внутренней сети.
 
+```bash
+cp .env.example .env
+./scripts/deploy.sh
+```
+
+Или вручную:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml up -d --build
+docker compose -f infra/docker/docker-compose.yml ps
+```
+
+`Dockerfile.backend` применяет миграции и запускает `uvicorn`; `Dockerfile.bot`
+устанавливает пакет бота. Compose готов к сборке, но локально Docker не
+установлен, поэтому сборка образов ещё не проверялась.
+
 ## Переменные окружения
 
 | Переменная | Назначение |
 |---|---|
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | база в compose |
 | `DATABASE_URL` | `postgresql+asyncpg://...` |
 | `TELEGRAM_BOT_TOKEN` | токен бота |
 | `BOT_INTERNAL_SECRET` | доверенный заголовок бота к API |
@@ -51,7 +68,10 @@ infra/
 - VPS / Fly.io / Render: `api` + `postgres` + `bot`.
 - Bot — long polling, без публичного порта.
 - Postgres — managed или контейнер с volume.
-- Healthchecks: `/healthz`, `/readyz`.
+- Healthchecks: `/api/v1/healthz`, `/api/v1/readyz`.
+- Шаблон production-переменных: `infra/deploy/env.example`.
+- Запуск на VPS: `./scripts/deploy.sh`.
+- Приёмка: `python scripts/e2e/smoke.py`.
 
 ### Web (этап 2)
 

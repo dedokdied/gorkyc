@@ -8,7 +8,10 @@ docs/
 ├── api/
 │   └── README.md        # контракт API, DTO, ошибки
 └── decisions/
-    └── 0001-architecture.md  # Telegram MVP → web на общем backend
+    ├── 0001-architecture.md  # Telegram MVP → web на общем backend
+    ├── 0002-free-local-stack.md  # локальный fallback LLM/STT
+    ├── 0003-api-first-models.md  # API-first для LLM/STT
+    └── 0004-vector-search-deferred.md  # pgvector отложен
 ```
 
 ## Что здесь держать

@@ -14,6 +14,30 @@
 8. Перезапуск backend → данные на месте.
 9. Напоминание приходит в указанное время.
 
+## Автоматическая проверка API
+
+Скрипт проверяет health и сценарии 2–6 через живой backend:
+
+```bash
+python scripts/e2e/smoke.py
+```
+
+Если API запущен не на localhost:
+
+```bash
+python scripts/e2e/smoke.py --base-url https://api.example.com/api/v1
+```
+
+Для проверки голоса добавь файл:
+
+```bash
+python scripts/e2e/smoke.py --voice-file samples/voice.ogg
+```
+
+Требуется `httpx` и доступ к API. Скрипт авторизуется как Telegram-бот:
+`X-Telegram-Id` + `X-Bot-Secret` (по умолчанию `1` и `change-me`). Для
+защищённого контура задай актуальный `BOT_INTERNAL_SECRET`.
+
 ## Web (этап 2)
 
 Повторить те же сценарии в браузере, включая голосовой ввод и мобильную вёрстку.

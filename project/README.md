@@ -21,6 +21,8 @@ backend и frontend** на том же API.
 
 - **Backend:** Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic.
 - **БД:** PostgreSQL 16/17, FTS `russian`, `pg_trgm`, опционально `pgvector`.
+  В текущем демо-окружении `pgvector` недоступен, поэтому включён FTS + trigram;
+  см. [`docs/decisions/0004-vector-search-deferred.md`](docs/decisions/0004-vector-search-deferred.md).
 - **LLM:** API-first, OpenAI-compatible; fallback `RuleBasedLLM`; локальный Ollama — опция.
 - **Telegram:** aiogram 3.x, long polling.
 - **Голос:** Whisper API; локальный faster-whisper — опция; TTS — после MVP.
@@ -69,14 +71,14 @@ project/
 
 ## Главное правило
 
-**Сначала контракт — потом код.** В первый час фиксируем:
+**Сначала связка — потом расширение.** Базовая интеграция уже собрана:
 
 1. DTO и эндпоинты в `docs/api/README.md`.
-2. Интерфейсы `EventService`, `SearchService`, `DatetimeParser`.
-3. Формат `/chat`, `/voice` и `pending_actions`.
-4. Маппинг Telegram `chat_id → user_id`.
+2. `EventService`, `SearchService`, `DatetimeParser` — реальные A-сервисы.
+3. `/chat`, `/voice` и `pending_actions` — через `assistant_tools.py`.
+4. Маппинг Telegram `X-Telegram-Id` → `user_id` с проверкой `X-Bot-Secret`.
 
-После этого каждый работает в своих папках.
+Дальше — 4 обязательных сценария, багфиксы и демо.
 
 ## Ветки
 
@@ -84,7 +86,8 @@ project/
 - `feat/core-*` — участник A.
 - `feat/assistant-*` — участник B.
 - Один PR — одна задача. Перед merge: тесты + self-review.
-- `docker-compose.yml` и `.env.example` — B; `backend/app/main.py` — A.
+- `docker-compose.yml` и `.env.example` — B; `backend/app/main.py` — A,
+  подключение B-роутеров согласуется в PR.
 - `docs/api/README.md`, `PLAN.md`, ADR — только через PR.
 
 ## Ритм
