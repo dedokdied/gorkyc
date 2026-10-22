@@ -53,16 +53,17 @@ React web ────┘         │
 | ORM/БД | SQLAlchemy 2.0 async + asyncpg, Alembic |
 | БД | PostgreSQL 16/17 |
 | Поиск | FTS `russian`, `pg_trgm`, опционально `pgvector` |
-| LLM | Ollama + Qwen2.5 локально, fallback RuleBasedLLM |
+| LLM | API-first, OpenAI-compatible; fallback RuleBasedLLM |
 | Telegram | aiogram 3.x, long polling на MVP |
-| STT | faster-whisper локально; Vosk — альтернатива |
+| STT | Whisper API; локальный faster-whisper — опция |
 | TTS | после MVP, только локальный провайдер |
 | Frontend (этап 5) | React + TypeScript + Vite, TanStack Query |
 | Напоминания | APScheduler + PostgreSQL job store |
 | Инфраструктура | Docker Compose, VPS/Fly.io/Render |
 | Качество | ruff, mypy, pytest; frontend — eslint/tsc |
 
-Бесплатный локальный стек и лицензии: `project/docs/decisions/0002-free-local-stack.md`.
+Модели API-first: `project/docs/decisions/0003-api-first-models.md`.
+Локальный fallback и лицензии: `project/docs/decisions/0002-free-local-stack.md`.
 
 ## 5. Архитектура
 
@@ -396,7 +397,7 @@ A даёт backend-переменные, `Dockerfile.backend` и миграци�
 |---|---|
 | Распыление на веб до MVP | жёсткий gate после 4 сценариев |
 | LLM выдумывает даты | `time_expression` + серверный парсер |
-| Плохой русский STT | faster-whisper `medium`, Vosk, текстовый fallback |
+| Плохой русский STT | Whisper API, локальный faster-whisper, текстовый fallback |
 | Дублирование логики бот/веб | один backend, бот — тонкий клиент |
 | Повторные напоминания | `reminder_sent_at` + lock |
 | Лимиты Telegram | короткие ответы, разбиение длинных сообщений |
@@ -416,15 +417,17 @@ BOT_MODE=polling
 BACKEND_URL=http://localhost:8000/api/v1
 BOT_INTERNAL_SECRET=
 
-LLM_PROVIDER=ollama
-LLM_MODEL=qwen2.5:3b
-LLM_BASE_URL=http://localhost:11434/v1
-LLM_TIMEOUT=120
+LLM_PROVIDER=api
+LLM_API_KEY=
+LLM_MODEL=gpt-4o-mini
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_TIMEOUT=60
 
-STT_PROVIDER=faster-whisper
-STT_MODEL=small
-STT_DEVICE=cpu
-STT_COMPUTE_TYPE=int8
+STT_PROVIDER=api
+STT_API_KEY=
+
+STT_BASE_URL=https://api.openai.com/v1
+STT_TIMEOUT=60
 STT_LANGUAGE=ru
 TTS_PROVIDER=none
 

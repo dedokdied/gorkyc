@@ -253,9 +253,22 @@ class RuleBasedLLM:
 
 
 def build_llm_from_env() -> LLMClient:
-    provider = os.getenv("LLM_PROVIDER", "rule-based").strip().lower()
+    provider = os.getenv("LLM_PROVIDER", "api").strip().lower()
     if provider in {"rule-based", "rule_based", "none", "off"}:
         return RuleBasedLLM()
+    if provider in {"api", "openai", "openai-compatible", "openai_compatible"}:
+        api_key = os.getenv("LLM_API_KEY", "").strip()
+        if not api_key:
+            return RuleBasedLLM()
+        return FallbackLLM(
+            primary=OpenAICompatibleLLM(
+                api_key=api_key,
+                model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
+                base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
+                timeout=float(os.getenv("LLM_TIMEOUT", "60")),
+            ),
+            fallback=RuleBasedLLM(),
+        )
     if provider in {"ollama", "local"}:
         return FallbackLLM(
             primary=OllamaLLM(

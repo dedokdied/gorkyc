@@ -3,7 +3,9 @@
 FastAPI + PostgreSQL. Общий backend для Telegram MVP и будущего веба.
 Владельцы: A — домен, данные и поиск; B — ассистент, интеграции LLM/STT/TTS.
 Границы ownership — в [`../ROLES.md`](../ROLES.md).
-Бесплатный локальный стек — в
+Модели API-first — в
+[`../docs/decisions/0003-api-first-models.md`](../docs/decisions/0003-api-first-models.md);
+локальный резерв — в
 [`../docs/decisions/0002-free-local-stack.md`](../docs/decisions/0002-free-local-stack.md).
 
 ## Слои
@@ -68,8 +70,8 @@ app/
 
 - `schemas/chat.py` — DTO `/chat`, `action`, `clarification`.
 - `schemas/tools.py` — аргументы tools.
-- `integrations/llm.py` — локальный Ollama (OpenAI-compatible протокол),
-  `FallbackLLM` и `RuleBasedLLM` без платных API-ключей.
+- `integrations/llm.py` — API-first через OpenAI-compatible протокол,
+  `FallbackLLM`, `RuleBasedLLM`; локальный Ollama — опция.
 - `services/assistant.py` — цикл LLM → tools → ответ, уточнения.
 - `services/dialogue.py` — pending actions; пока in-memory.
 - `tests/test_chat.py` — создание, уточнение, список, fallback.
@@ -79,15 +81,16 @@ app/
 
 ## Голос и напоминания (этап 3, зона B)
 
-- `integrations/stt.py` — локальный `faster-whisper`, без внешнего API.
+- `integrations/stt.py` — `OpenAIWhisperSTT` (API) и локальный `FasterWhisperSTT`.
 - `integrations/tts.py` — протокол TTS и `NullTTS`; озвучка после MVP.
 - `integrations/telegram_notifier.py` — отправка напоминаний в Telegram.
 - `services/voice.py` — аудио → STT → `Assistant` → `VoiceResult`.
 - `api/chat.py`, `api/voice.py` — фабрики роутеров. A подключает их в
   `app/main.py` и передаёт `resolve_user`; B не трогает `main.py`.
 - Для multipart `/voice` нужны `fastapi` и `python-multipart`.
-- Для локального STT: `pip install faster-whisper`.
-- Для локального LLM: `ollama pull qwen2.5:3b`.
+- API-first: задай `LLM_API_KEY` и `STT_API_KEY`, URL — в `.env`.
+- Локальный fallback: `STT_PROVIDER=faster-whisper` (`pip install faster-whisper`)
+  или `LLM_PROVIDER=ollama` (`ollama pull qwen2.5:3b`).
 
 Пример подключения:
 
