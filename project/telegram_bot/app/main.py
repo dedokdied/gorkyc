@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.api_client import ApiClient
 from app.config import get_settings
-from app.handlers import clarification, events, start, text
+from app.handlers import clarification, events, start, text, voice
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ async def main() -> None:
         start.router,
         events.router,
         clarification.router,
+        voice.router,
         text.router,
     )
 

@@ -34,9 +34,9 @@ infra/
 | `TELEGRAM_BOT_TOKEN` | токен бота |
 | `BOT_INTERNAL_SECRET` | доверенный заголовок бота к API |
 | `BACKEND_URL` | URL API для бота |
-| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | провайдер LLM |
-| `STT_PROVIDER`, `STT_API_KEY` | распознавание голоса |
-| `TTS_PROVIDER` | синтез речи |
+| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_BASE_URL` | локальный Ollama или `rule-based` |
+| `STT_PROVIDER`, `STT_MODEL`, `STT_DEVICE` | локальный faster-whisper |
+| `TTS_PROVIDER` | `none` до этапа после MVP |
 | `ENABLE_VECTOR_SEARCH` | включить pgvector |
 | `ENABLE_RERANK` | включить reranker |
 | `EMBEDDINGS_PROVIDER` | `local`, `api` или `off` |

@@ -33,6 +33,25 @@ class ChatResult:
     audio_url: str | None = None
 
 
+@dataclass(slots=True)
+class VoiceResult:
+    session_id: str | None
+    transcript: str
+    reply: str
+    action: dict[str, Any] | None = None
+    clarification: dict[str, Any] | None = None
+    audio_url: str | None = None
+
+    def as_chat_result(self) -> ChatResult:
+        return ChatResult(
+            session_id=self.session_id,
+            reply=self.reply,
+            action=self.action,
+            clarification=self.clarification,
+            audio_url=self.audio_url,
+        )
+
+
 class ApiClient:
     def __init__(
         self,
@@ -77,6 +96,61 @@ class ApiClient:
             json=payload,
         )
         return self._parse_chat(data)
+
+    async def voice(
+        self,
+        telegram_id: int,
+        audio: bytes,
+        filename: str,
+        content_type: str,
+        *,
+        session_id: str | None = None,
+        timezone: str | None = None,
+    ) -> VoiceResult:
+        if self._settings.bot_mock_mode:
+            return self._mock_voice(telegram_id)
+
+        form = {"timezone": timezone or self._settings.app_tz}
+        if session_id:
+            form["session_id"] = session_id
+        data = await self._request(
+            "POST",
+            "/voice",
+            telegram_id=telegram_id,
+            files={"file": (filename, audio, content_type)},
+            data=form,
+        )
+        return self._parse_voice(data)
+
+    async def search_events(
+        self,
+        telegram_id: int,
+        query: str,
+        *,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        if self._settings.bot_mock_mode:
+            return self._mock_search(query, limit)
+
+        data = await self._request(
+            "POST",
+            "/search",
+            telegram_id=telegram_id,
+            json={"query": query, "limit": limit},
+        )
+        if isinstance(data, dict):
+            items = data.get("items", [])
+        else:
+            items = data
+
+        events: list[dict[str, Any]] = []
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            event = item.get("event", item)
+            if isinstance(event, dict):
+                events.append(event)
+        return events
 
     async def answer_clarification(
         self,
@@ -187,6 +261,30 @@ class ApiClient:
             audio_url=data.get("audio_url"),
         )
 
+    @staticmethod
+    def _parse_voice(data: Any) -> VoiceResult:
+        if not isinstance(data, dict):
+            raise BackendError(
+                "Backend вернул ответ без текста.",
+                code="invalid_response",
+            )
+        transcript = data.get("transcript")
+        reply = data.get("reply")
+        if not isinstance(transcript, str) or not isinstance(reply, str):
+            raise BackendError(
+                "Backend вернул ответ без расшифровки.",
+                code="invalid_response",
+            )
+        clarification = data.get("clarification")
+        return VoiceResult(
+            session_id=data.get("session_id"),
+            transcript=transcript,
+            reply=reply,
+            action=data.get("action"),
+            clarification=clarification if isinstance(clarification, dict) else None,
+            audio_url=data.get("audio_url"),
+        )
+
     def _mock_events(
         self,
         start: str | None,
@@ -244,6 +342,28 @@ class ApiClient:
         if moment.tzinfo is None:
             return moment.replace(tzinfo=ZoneInfo("UTC"))
         return moment
+
+    def _mock_search(self, query: str, limit: int) -> list[dict[str, Any]]:
+        needle = query.strip().lower()
+        if not needle:
+            return []
+        events = self._mock_events(None, None)
+        matches = [
+            event
+            for event in events
+            if needle in str(event.get("title", "")).lower()
+            or needle in str(event.get("type", "")).lower()
+        ]
+        return matches[:limit]
+
+    @staticmethod
+    def _mock_voice(telegram_id: int) -> VoiceResult:
+        return VoiceResult(
+            session_id=f"mock-{telegram_id}",
+            transcript="Mock: голосовое сообщение",
+            reply="Mock: голос получил. В реальном backend здесь будет расшифровка и ответ.",
+            action={"name": "mock", "status": "done"},
+        )
 
     @staticmethod
     def _mock_chat(telegram_id: int, text: str) -> ChatResult:

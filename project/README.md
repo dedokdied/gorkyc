@@ -6,6 +6,7 @@ backend и frontend** на том же API.
 - Полный план: [`../PLAN.md`](../PLAN.md)
 - Роли и контракт: [`ROLES.md`](ROLES.md)
 - API: [`docs/api/README.md`](docs/api/README.md)
+- Бесплатный стек: [`docs/decisions/0002-free-local-stack.md`](docs/decisions/0002-free-local-stack.md)
 
 ## Фазы
 
@@ -19,9 +20,9 @@ backend и frontend** на том же API.
 
 - **Backend:** Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic.
 - **БД:** PostgreSQL 16/17, FTS `russian`, `pg_trgm`, опционально `pgvector`.
-- **LLM:** LiteLLM / OpenAI-compatible API с tool calling.
+- **LLM:** Ollama + Qwen2.5 локально, fallback `RuleBasedLLM`.
 - **Telegram:** aiogram 3.x, long polling.
-- **Голос:** faster-whisper локально или Whisper/Groq API; TTS — edge-tts.
+- **Голос:** faster-whisper локально; TTS — после MVP.
 - **Напоминания:** APScheduler + PostgreSQL job store.
 - **Frontend (этап 2):** React + TypeScript + Vite, TanStack Query.
 - **Инфраструктура:** Docker Compose, VPS/Fly.io/Render.

@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import Annotated
+
+from fastapi import APIRouter, File, Form, Header, UploadFile
+from fastapi.responses import JSONResponse
+
+from app.schemas.chat import VoiceResponse
+from app.services.voice import VoiceError, VoiceService
+
+UserResolver = Callable[[int, str], Awaitable[str]]
+MAX_AUDIO_BYTES = 20 * 1024 * 1024
+
+
+def build_voice_router(
+    *,
+    voice: VoiceService,
+    resolve_user: UserResolver,
+) -> APIRouter:
+    router = APIRouter(tags=["voice"])
+
+    @router.post("/voice", response_model=VoiceResponse)
+    async def transcribe_voice(
+        x_telegram_id: Annotated[int, Header(alias="X-Telegram-Id")],
+        x_bot_secret: Annotated[str, Header(alias="X-Bot-Secret")],
+        file: Annotated[UploadFile, File()],
+        session_id: Annotated[str | None, Form()] = None,
+        timezone: Annotated[str, Form()] = "Europe/Moscow",
+    ) -> VoiceResponse | JSONResponse:
+        user_id = await resolve_user(x_telegram_id, x_bot_secret)
+        audio = await file.read()
+        if len(audio) > MAX_AUDIO_BYTES:
+            return _error(
+                413,
+                "audio_too_large",
+                "Аудио больше 20 МБ. Отправь файл короче.",
+            )
+
+        try:
+            result = await voice.handle(
+                user_id,
+                audio,
+                file.filename or "voice.ogg",
+                file.content_type or "audio/ogg",
+                session_id=session_id or None,
+                timezone=timezone,
+            )
+        except VoiceError as exc:
+            return _error(400, exc.code, exc.user_message)
+
+        return VoiceResponse(
+            session_id=result.session_id,
+            transcript=result.transcript,
+            reply=result.reply,
+            action=result.action,
+            clarification=result.clarification,
+            audio_url=result.audio_url,
+        )
+
+    return router
+
+
+def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message}},
+    )

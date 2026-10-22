@@ -53,14 +53,16 @@ React web ────┘         │
 | ORM/БД | SQLAlchemy 2.0 async + asyncpg, Alembic |
 | БД | PostgreSQL 16/17 |
 | Поиск | FTS `russian`, `pg_trgm`, опционально `pgvector` |
-| LLM | LiteLLM / OpenAI-compatible API, tool calling |
+| LLM | Ollama + Qwen2.5 локально, fallback RuleBasedLLM |
 | Telegram | aiogram 3.x, long polling на MVP |
-| STT | faster-whisper локально или Whisper/Groq API |
-| TTS | edge-tts, опционально |
+| STT | faster-whisper локально; Vosk — альтернатива |
+| TTS | после MVP, только локальный провайдер |
 | Frontend (этап 5) | React + TypeScript + Vite, TanStack Query |
 | Напоминания | APScheduler + PostgreSQL job store |
 | Инфраструктура | Docker Compose, VPS/Fly.io/Render |
 | Качество | ruff, mypy, pytest; frontend — eslint/tsc |
+
+Бесплатный локальный стек и лицензии: `project/docs/decisions/0002-free-local-stack.md`.
 
 ## 5. Архитектура
 
@@ -394,7 +396,7 @@ A даёт backend-переменные, `Dockerfile.backend` и миграци�
 |---|---|
 | Распыление на веб до MVP | жёсткий gate после 4 сценариев |
 | LLM выдумывает даты | `time_expression` + серверный парсер |
-| Плохой русский STT | API Whisper/Groq, текстовый fallback |
+| Плохой русский STT | faster-whisper `medium`, Vosk, текстовый fallback |
 | Дублирование логики бот/веб | один backend, бот — тонкий клиент |
 | Повторные напоминания | `reminder_sent_at` + lock |
 | Лимиты Telegram | короткие ответы, разбиение длинных сообщений |
@@ -414,14 +416,17 @@ BOT_MODE=polling
 BACKEND_URL=http://localhost:8000/api/v1
 BOT_INTERNAL_SECRET=
 
-LLM_PROVIDER=openai
-LLM_API_KEY=
-LLM_MODEL=
-LLM_BASE_URL=
+LLM_PROVIDER=ollama
+LLM_MODEL=qwen2.5:3b
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_TIMEOUT=120
 
 STT_PROVIDER=faster-whisper
-STT_API_KEY=
-TTS_PROVIDER=edge-tts
+STT_MODEL=small
+STT_DEVICE=cpu
+STT_COMPUTE_TYPE=int8
+STT_LANGUAGE=ru
+TTS_PROVIDER=none
 
 ENABLE_VECTOR_SEARCH=false
 ENABLE_RERANK=false

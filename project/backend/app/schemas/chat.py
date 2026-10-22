@@ -35,3 +35,7 @@ class ChatResponse(BaseModel):
     action: ActionInfo | None = None
     clarification: Clarification | None = None
     audio_url: str | None = None
+
+
+class VoiceResponse(ChatResponse):
+    transcript: str

@@ -4,7 +4,7 @@ import logging
 
 from aiogram import Router
 from aiogram.enums import ChatAction
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -51,6 +51,46 @@ async def cmd_week(
     settings: Settings,
 ) -> None:
     await send_period(message, state, api, settings, "week")
+
+
+@router.message(Command("search"))
+async def cmd_search(
+    message: Message,
+    state: FSMContext,
+    api: ApiClient,
+    settings: Settings,
+    command: CommandObject,
+) -> None:
+    query = (command.args or "").strip()
+    if not query:
+        await message.answer("Напиши запрос: /search договор")
+        return
+
+    data = await state.get_data()
+    timezone = data.get("timezone") or settings.app_tz
+
+    await message.bot.send_chat_action(
+        chat_id=message.chat.id,
+        action=ChatAction.TYPING,
+    )
+
+    try:
+        events = await api.search_events(
+            message.chat.id,
+            query,
+            limit=5,
+        )
+    except BackendError as exc:
+        logger.warning("search failed: %s", exc.code)
+        await message.answer(exc.user_message)
+        return
+
+    if not events:
+        await message.answer(f"По запросу «{query}» ничего не нашёл.")
+        return
+
+    body = format_events(events, timezone, limit=5)
+    await message.answer(f"Результаты по «{query}»:\n\n{body}")
 
 
 async def send_period(

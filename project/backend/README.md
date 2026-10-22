@@ -3,6 +3,8 @@
 FastAPI + PostgreSQL. Общий backend для Telegram MVP и будущего веба.
 Владельцы: A — домен, данные и поиск; B — ассистент, интеграции LLM/STT/TTS.
 Границы ownership — в [`../ROLES.md`](../ROLES.md).
+Бесплатный локальный стек — в
+[`../docs/decisions/0002-free-local-stack.md`](../docs/decisions/0002-free-local-stack.md).
 
 ## Слои
 
@@ -66,14 +68,42 @@ app/
 
 - `schemas/chat.py` — DTO `/chat`, `action`, `clarification`.
 - `schemas/tools.py` — аргументы tools.
-- `integrations/llm.py` — OpenAI-compatible клиент, `RuleBasedLLM` для работы без API-ключа.
+- `integrations/llm.py` — локальный Ollama (OpenAI-compatible протокол),
+  `FallbackLLM` и `RuleBasedLLM` без платных API-ключей.
 - `services/assistant.py` — цикл LLM → tools → ответ, уточнения.
 - `services/dialogue.py` — pending actions; пока in-memory.
 - `tests/test_chat.py` — создание, уточнение, список, fallback.
 
 `ToolExecutor` — протокол-стык с A: A реализует создание/список/поиск
-через настоящий `EventService`, B не пишет SQL. FastAPI-роут `/chat`
-подключается после появления `app/main.py` и зависимостей backend.
+через настоящий `EventService`, B не пишет SQL.
+
+## Голос и напоминания (этап 3, зона B)
+
+- `integrations/stt.py` — локальный `faster-whisper`, без внешнего API.
+- `integrations/tts.py` — протокол TTS и `NullTTS`; озвучка после MVP.
+- `integrations/telegram_notifier.py` — отправка напоминаний в Telegram.
+- `services/voice.py` — аудио → STT → `Assistant` → `VoiceResult`.
+- `api/chat.py`, `api/voice.py` — фабрики роутеров. A подключает их в
+  `app/main.py` и передаёт `resolve_user`; B не трогает `main.py`.
+- Для multipart `/voice` нужны `fastapi` и `python-multipart`.
+- Для локального STT: `pip install faster-whisper`.
+- Для локального LLM: `ollama pull qwen2.5:3b`.
+
+Пример подключения:
+
+```python
+from app.api.chat import build_chat_router
+from app.api.voice import build_voice_router
+
+app.include_router(build_chat_router(
+    assistant=assistant,
+    resolve_user=resolve_telegram_user,
+))
+app.include_router(build_voice_router(
+    voice=voice_service,
+    resolve_user=resolve_telegram_user,
+))
+```
 
 ## Ключевые интерфейсы
 

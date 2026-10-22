@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from app.integrations.llm import LLMTurn, RuleBasedLLM, ToolCall
+from app.integrations.llm import FallbackLLM, LLMError, LLMTurn, RuleBasedLLM, ToolCall
 from app.schemas.tools import (
     CreateEventArgs,
     EventIdArgs,
@@ -100,6 +100,16 @@ class ScriptedLLM:
     ) -> LLMTurn:
         del messages, tools
         return self._turns.pop(0)
+
+
+class FailingLLM:
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMTurn:
+        del messages, tools
+        raise LLMError("ollama is down")
 
 
 def create_call(**arguments: Any) -> LLMTurn:
@@ -211,6 +221,21 @@ async def test_rule_based_llm_returns_create_event() -> None:
 
     assert turn.tool_calls[0].name == "create_event"
     assert turn.tool_calls[0].arguments["type"] == "reminder"
+
+
+@pytest.mark.asyncio
+async def test_fallback_llm_uses_rule_based_when_local_model_is_down() -> None:
+    llm = FallbackLLM(
+        primary=FailingLLM(),
+        fallback=RuleBasedLLM(),
+    )
+
+    turn = await llm.complete(
+        [{"role": "user", "content": "Напомни завтра в 10 позвонить Ивану"}],
+        [],
+    )
+
+    assert turn.tool_calls[0].name == "create_event"
 
 
 @pytest.mark.asyncio

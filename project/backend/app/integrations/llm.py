@@ -71,10 +71,10 @@ class OpenAICompatibleLLM:
     def __init__(
         self,
         *,
-        api_key: str,
-        model: str,
-        base_url: str = "https://api.openai.com/v1",
-        timeout: float = 30.0,
+        api_key: str | None = None,
+        model: str = "qwen2.5:3b",
+        base_url: str = "http://localhost:11434/v1",
+        timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._api_key = api_key
@@ -90,10 +90,13 @@ class OpenAICompatibleLLM:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
     ) -> LLMTurn:
+        headers = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         try:
             response = await self._client.post(
                 f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}"},
+                headers=headers,
                 json={
                     "model": self._model,
                     "messages": messages,
@@ -129,6 +132,40 @@ class OpenAICompatibleLLM:
             content=message.get("content"),
             tool_calls=tool_calls,
         )
+
+
+class OllamaLLM(OpenAICompatibleLLM):
+    def __init__(
+        self,
+        *,
+        model: str = "qwen2.5:3b",
+        base_url: str = "http://localhost:11434/v1",
+        timeout: float = 120.0,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        super().__init__(
+            api_key=None,
+            model=model,
+            base_url=base_url,
+            timeout=timeout,
+            client=client,
+        )
+
+
+class FallbackLLM:
+    def __init__(self, *, primary: LLMClient, fallback: LLMClient) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMTurn:
+        try:
+            return await self._primary.complete(messages, tools)
+        except LLMError:
+            return await self._fallback.complete(messages, tools)
 
 
 class RuleBasedLLM:
@@ -216,11 +253,16 @@ class RuleBasedLLM:
 
 
 def build_llm_from_env() -> LLMClient:
-    api_key = os.getenv("LLM_API_KEY", "").strip()
-    if not api_key:
+    provider = os.getenv("LLM_PROVIDER", "rule-based").strip().lower()
+    if provider in {"rule-based", "rule_based", "none", "off"}:
         return RuleBasedLLM()
-    return OpenAICompatibleLLM(
-        api_key=api_key,
-        model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
-    )
+    if provider in {"ollama", "local"}:
+        return FallbackLLM(
+            primary=OllamaLLM(
+                model=os.getenv("LLM_MODEL", "qwen2.5:3b"),
+                base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"),
+                timeout=float(os.getenv("LLM_TIMEOUT", "120")),
+            ),
+            fallback=RuleBasedLLM(),
+        )
+    raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")

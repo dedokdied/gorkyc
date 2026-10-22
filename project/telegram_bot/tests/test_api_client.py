@@ -129,6 +129,99 @@ async def test_mock_events_can_be_filtered_by_period() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_sends_multipart_and_parses_transcript() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["content_type"] = request.headers["content-type"]
+        captured["body"] = request.content
+        return httpx.Response(
+            200,
+            json={
+                "session_id": "session-1",
+                "transcript": "напомни завтра в 10",
+                "reply": "Создал напоминание.",
+                "action": {"name": "create_event", "status": "done"},
+                "clarification": None,
+                "audio_url": None,
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://test/api/v1",
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        api = ApiClient(make_settings(), http_client)
+        result = await api.voice(
+            42,
+            b"ogg-bytes",
+            "voice.ogg",
+            "audio/ogg",
+            session_id="session-0",
+        )
+
+    assert captured["path"] == "/api/v1/voice"
+    assert str(captured["content_type"]).startswith("multipart/form-data; boundary=")
+    body = captured["body"]
+    assert isinstance(body, bytes)
+    assert b'name="file"; filename="voice.ogg"' in body
+    assert b"ogg-bytes" in body
+    assert b'name="session_id"' in body
+    assert b"session-0" in body
+    assert result.transcript == "напомни завтра в 10"
+    assert result.reply == "Создал напоминание."
+    assert result.as_chat_result().reply == "Создал напоминание."
+
+
+@pytest.mark.asyncio
+async def test_search_unwraps_event_hits() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "event": {
+                            "id": "event-1",
+                            "type": "task",
+                            "title": "Проверить договор",
+                        },
+                        "score": 0.9,
+                        "snippet": "Проверить договор",
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://test/api/v1",
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        api = ApiClient(make_settings(), http_client)
+        events = await api.search_events(1, "договор", limit=3)
+
+    assert captured["payload"] == {"query": "договор", "limit": 3}
+    assert events == [
+        {"id": "event-1", "type": "task", "title": "Проверить договор"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mock_search_filters_events() -> None:
+    api = ApiClient(make_settings(bot_mock_mode=True))
+    try:
+        events = await api.search_events(7, "договор")
+    finally:
+        await api.close()
+
+    assert [event["title"] for event in events] == ["Подготовить договор"]
+
+
+@pytest.mark.asyncio
 async def test_list_events_unwraps_items() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.params["status"] == "planned"
