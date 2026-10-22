@@ -62,6 +62,19 @@ app/
 
 Бот не дублирует бизнес-логику: только Telegram UI и вызовы API.
 
+## Ассистент (этап 2, зона B)
+
+- `schemas/chat.py` — DTO `/chat`, `action`, `clarification`.
+- `schemas/tools.py` — аргументы tools.
+- `integrations/llm.py` — OpenAI-compatible клиент, `RuleBasedLLM` для работы без API-ключа.
+- `services/assistant.py` — цикл LLM → tools → ответ, уточнения.
+- `services/dialogue.py` — pending actions; пока in-memory.
+- `tests/test_chat.py` — создание, уточнение, список, fallback.
+
+`ToolExecutor` — протокол-стык с A: A реализует создание/список/поиск
+через настоящий `EventService`, B не пишет SQL. FastAPI-роут `/chat`
+подключается после появления `app/main.py` и зависимостей backend.
+
 ## Ключевые интерфейсы
 
 ```python
