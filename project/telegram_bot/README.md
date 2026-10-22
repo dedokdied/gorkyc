@@ -12,13 +12,15 @@
 - `keyboards.py` — inline-кнопки уточнений.
 - `config.py` — токен, backend URL, таймзона.
 
-## Команды
+## Что уже есть (этап 0)
 
-- `/start` — приветствие и регистрация.
-- `/today`, `/tomorrow`, `/week` — список событий.
-- `/search` — поиск по старым записям.
-- `/settings` — таймзона и TTS.
-- `/help` — подсказка.
+- `/start`, `/help`.
+- Текст → `/chat`.
+- Inline-кнопки для уточнений.
+- Ошибки backend показываются пользователю без stack trace.
+- Mock-режим: бот работает без backend.
+
+`/today`, `/tomorrow`, `/week`, `/search` и голос — следующие этапы.
 
 ## Запуск
 
@@ -30,12 +32,25 @@ pip install -e ".[dev]"
 python -m app.main
 ```
 
-Переменные:
+Переменные берутся из `project/.env` или `project/telegram_bot/.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=
 BACKEND_URL=http://localhost:8000/api/v1
 BOT_INTERNAL_SECRET=change-me
+BOT_MOCK_MODE=false
+```
+
+Для проверки без backend:
+
+```env
+BOT_MOCK_MODE=true
 ```
 
 MVP работает через long polling. Webhook не нужен.
+
+## Тесты
+
+```bash
+.venv\Scripts\python.exe -m pytest -q
+```
