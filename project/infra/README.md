@@ -19,9 +19,9 @@ infra/
 ## Docker Compose: Telegram MVP
 
 - `postgres` — `pgvector/pgvector:pg16` с `pg_trgm` и `vector`.
-- `api` — FastAPI, миграции Alembic; APScheduler напоминаний — после MVP.
+- `api` — FastAPI, миграции Alembic, фоновый worker напоминаний.
 - `bot` — aiogram, long polling, зависит от `api`.
-- `frontend` — **не добавляем на MVP**, только на этапе 2.
+- `frontend` — **не входит в Telegram MVP**, этап 5.
 
 Публичный webhook боту не нужен: long polling. API наружу не публикуем,
 бот ходит по внутренней сети.
@@ -48,8 +48,9 @@ docker compose -f infra/docker/docker-compose.yml ps
 |---|---|
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | база в compose |
 | `DATABASE_URL` | `postgresql+asyncpg://...` |
-| `TELEGRAM_BOT_TOKEN` | токен бота |
+| `TELEGRAM_BOT_TOKEN` | токен бота и отправка напоминаний |
 | `BOT_INTERNAL_SECRET` | доверенный заголовок бота к API |
+| `REMINDERS_ENABLED`, `REMINDERS_INTERVAL_SECONDS` | worker напоминаний |
 | `BACKEND_URL` | URL API для бота |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | API-first или `rule-based` |
 | `STT_PROVIDER`, `STT_API_KEY`, `STT_MODEL`, `STT_BASE_URL` | Whisper API или локальный faster-whisper |

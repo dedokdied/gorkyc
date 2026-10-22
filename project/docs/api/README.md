@@ -45,7 +45,6 @@
 | POST | `/search` | A | поиск по старым записям |
 | POST | `/chat` | B | текст → ответ ассистента |
 | POST | `/voice` | B | аудио → расшифровка → ответ |
-| GET | `/sessions/{id}/messages` | B | история диалога |
 | POST | `/clarifications/{id}/answer` | B | ответ на уточнение |
 | GET | `/healthz`, `/readyz` | вместе | health |
 
