@@ -336,7 +336,7 @@ class ApiClient:
         if not value:
             return None
         try:
-            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            moment = datetime.fromisoformat(value)
         except ValueError:
             return None
         if moment.tzinfo is None:

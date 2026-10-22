@@ -40,7 +40,7 @@ def format_moment(value: Any, timezone: str) -> str:
         return "без времени"
 
     try:
-        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        moment = datetime.fromisoformat(value)
     except ValueError:
         return "время не указано"
 

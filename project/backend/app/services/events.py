@@ -124,7 +124,13 @@ class EventService:
         self.db = db
         self.repo = EventRepository(db)
 
-    async def create(self, user_id: UUID, data: EventCreate | dict | Any) -> EventRead:
+    async def create(
+        self,
+        user_id: UUID,
+        data: EventCreate | dict | Any,
+        *,
+        source: EventSource = EventSource.text,
+    ) -> EventRead:
         user_id = _uid(user_id)
         try:
             payload = _as_create(data)
@@ -170,7 +176,7 @@ class EventService:
             due_at=due_at,
             duration_minutes=duration,
             timezone=payload.timezone,
-            source=EventSource.text,
+            source=source,
             recurrence=payload.recurrence,
             search_text=_build_search_text(payload.title, payload.description),
             metadata_={},

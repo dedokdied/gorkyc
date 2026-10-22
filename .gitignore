@@ -14,5 +14,9 @@ dist/
 build/
 *.tsbuildinfo
 *.log
+test-results/
+playwright-report/
+blob-report/
+.playwright/
 .DS_Store
 Thumbs.db

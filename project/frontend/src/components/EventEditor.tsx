@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { EventCreate, EventType } from "../types/api";
+import { zonedDateTimeToIso } from "../utils/timezone";
 
 const TIMEZONES = [
   "Europe/Moscow",
@@ -53,7 +54,7 @@ export function EventEditor({ onCreate, onClose }: Props) {
       payload.description = description.trim();
     }
     if (when) {
-      const iso = new Date(when).toISOString();
+      const iso = zonedDateTimeToIso(when, timezone);
       if (type === "meeting") {
         payload.starts_at = iso;
         payload.duration_minutes = 60;

@@ -44,6 +44,18 @@ docker compose -f infra/docker/docker-compose.yml ps
 устанавливает пакет бота. Compose готов к сборке, но локально Docker не
 установлен, поэтому сборка образов ещё не проверялась.
 
+## CI
+
+`.github/workflows/ci.yml` на каждый push/PR:
+
+- поднимает PostgreSQL 16 и проверяет миграции;
+- запускает backend- и bot-тесты, `ruff`;
+- собирает frontend;
+- запускает Playwright e2e против реального API.
+
+Docker-образы в CI не собираются: для этого нужен отдельный job с Docker
+daemon.
+
 ## Переменные окружения
 
 | Переменная | Назначение |

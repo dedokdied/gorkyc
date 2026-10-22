@@ -40,16 +40,32 @@ python scripts/e2e/smoke.py --voice-file samples/voice.ogg
 
 ## Web
 
-Автоматического browser-теста пока нет; проверка ручная по
-[`docs/demo.md`](../../docs/demo.md). Минимальный smoke:
+Browser-тесты лежат в `frontend/e2e/web.spec.ts` (Playwright). Нужны
+запущенный backend с PostgreSQL и установленный frontend:
 
 ```bash
 cd project/frontend
-npm run dev
+npm ci
+npm run e2e
 ```
 
-1. `http://localhost:5173` открывается, `/api/v1/healthz` доступен через Vite
-   proxy.
-2. Demo-пользователь видит только свои события.
-3. Чат, таймлайн (create/complete/delete), поиск и голосовой ввод работают.
-4. Сборка `npm run build` проходит; мобильная вёрстка не ломается.
+Playwright сам поднимает Vite dev server на `127.0.0.1:5173`; backend должен
+быть доступен на `127.0.0.1:8000` (Vite proxy). Вне CI по умолчанию
+используется установленный Edge; на Linux/CI — Chromium:
+
+```bash
+npx playwright install --with-deps chromium
+npm run e2e
+```
+
+Переменные:
+
+- `E2E_BASE_URL` — адрес уже запущенного frontend;
+- `PLAYWRIGHT_CHANNEL` — например, `msedge` или `chrome`;
+- `E2E_RUN_ID` — суффикс demo-user, чтобы прогоны не пересекались.
+
+Покрыто: создание напоминания через чат, уточнение времени, таймлайн
+(create/complete), поиск, конвертация выбранной таймзоны и мобильный viewport.
+CI запускает тот же набор в job `e2e`.
+
+Ручной чеклист для показа — [`docs/demo.md`](../../docs/demo.md).
