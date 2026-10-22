@@ -45,7 +45,7 @@ app/
 │   ├── tts.py               # B
 │   ├── telegram_notifier.py # B: отправка напоминаний
 │   └── embeddings.py        # A
-└── workers/                 # APScheduler напоминаний
+└── workers/                 # фоновый worker напоминаний
 ```
 
 ## Правила
@@ -57,7 +57,8 @@ app/
 - `user_id` берётся из auth-контекста, никогда из аргументов LLM.
 - Все tool-аргументы проходят Pydantic-валидацию.
 - Backend не импортирует aiogram: Telegram-бот общается с ним по HTTP.
-- Напоминания: APScheduler в backend, отправка через `TelegramNotifier`.
+- Напоминания: фоновый worker в backend раз в `REMINDERS_INTERVAL_SECONDS`
+  выбирает due-события и отправляет их через `TelegramNotifier`.
 
 ## Клиенты
 

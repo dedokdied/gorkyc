@@ -129,6 +129,10 @@ class Event(Base):
         nullable=False,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -164,6 +168,13 @@ class Event(Base):
         ),
         Index("events_user_time_idx", "user_id", "starts_at"),
         Index("events_user_due_idx", "user_id", "due_at"),
+        Index(
+            "events_pending_reminders_idx",
+            "due_at",
+            postgresql_where=text(
+                "type = 'reminder' AND status = 'planned' AND reminder_sent_at IS NULL"
+            ),
+        ),
         Index("events_tsv_idx", "tsv", postgresql_using="gin"),
         Index(
             "events_trgm_idx",

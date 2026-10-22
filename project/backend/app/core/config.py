@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     app_tz: str = "Europe/Moscow"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/assistant"
     bot_internal_secret: str = "change-me"
+    telegram_bot_token: str | None = None
+    reminders_enabled: bool = True
+    reminders_interval_seconds: float = 30.0
     enable_vector_search: bool = False
     enable_rerank: bool = False
     embeddings_provider: str = "off"

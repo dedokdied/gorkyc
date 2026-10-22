@@ -10,15 +10,20 @@ from app.api import events, health, search
 from app.api.chat import build_chat_router
 from app.api.deps import resolve_telegram_user
 from app.api.voice import build_voice_router
+from app.core.config import settings
 from app.core.logging import configure_logging, get_logger, get_request_id
 from app.core.middleware import RequestIDMiddleware
+from app.db import SessionLocal
 from app.integrations.llm import build_llm_from_env
 from app.integrations.stt import build_stt_from_env
+from app.integrations.telegram_notifier import TelegramNotifier
 from app.services.assistant import Assistant
 from app.services.assistant_tools import DbToolExecutor
 from app.services.dialogue import InMemoryPendingActionStore
 from app.services.events import ConflictError, DomainValidationError, NotFoundError
+from app.services.reminders import ReminderService
 from app.services.voice import VoiceService
+from app.workers.reminders import ReminderWorker
 
 configure_logging()
 logger = get_logger("assistant.api")
@@ -34,11 +39,40 @@ voice_service = VoiceService(
 )
 
 
+_notifier: TelegramNotifier | None = None
+_reminder_worker: ReminderWorker | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Схема управляется Alembic. create_all в runtime запрещён: он маскирует
     # расхождения миграций и может работать не с той БД.
-    yield
+    global _notifier, _reminder_worker
+
+    token = (settings.telegram_bot_token or "").strip()
+    if settings.reminders_enabled and token:
+        _notifier = TelegramNotifier(token=token)
+        _reminder_worker = ReminderWorker(
+            ReminderService(SessionLocal, _notifier),
+            interval_seconds=settings.reminders_interval_seconds,
+        )
+        _reminder_worker.start()
+    else:
+        logger.info(
+            "reminder_worker_disabled",
+            enabled=settings.reminders_enabled,
+            token_configured=bool(token),
+        )
+
+    try:
+        yield
+    finally:
+        if _reminder_worker is not None:
+            await _reminder_worker.stop()
+            _reminder_worker = None
+        if _notifier is not None:
+            await _notifier.close()
+            _notifier = None
 
 
 app = FastAPI(title="Voice Assistant", version="1.0.0", lifespan=lifespan)

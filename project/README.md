@@ -26,8 +26,8 @@ backend и frontend** на том же API.
 - **LLM:** API-first, OpenAI-compatible; fallback `RuleBasedLLM`; локальный Ollama — опция.
 - **Telegram:** aiogram 3.x, long polling.
 - **Голос:** Whisper API; локальный faster-whisper — опция; TTS — после MVP.
-- **Напоминания:** APScheduler + PostgreSQL job store.
-- **Frontend (этап 2):** React + TypeScript + Vite, TanStack Query.
+- **Напоминания:** фоновый backend-worker + `TelegramNotifier`.
+- **Frontend (этап 5):** React + TypeScript + Vite.
 - **Инфраструктура:** Docker Compose, VPS/Fly.io/Render.
 
 ## Структура
