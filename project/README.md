@@ -82,8 +82,8 @@ project/
 - `feat/core-*` — участник A.
 - `feat/assistant-*` — участник B.
 - Один PR — одна задача. Перед merge: тесты + self-review.
-- Общие файлы (`docker-compose.yml`, `main.py`, `.env.example`) — отдельным PR
-  или по договорённости.
+- `docker-compose.yml` и `.env.example` — B; `backend/app/main.py` — A.
+- `docs/api/README.md`, `PLAN.md`, ADR — только через PR.
 
 ## Ритм
 

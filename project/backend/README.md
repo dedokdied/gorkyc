@@ -2,7 +2,7 @@
 
 FastAPI + PostgreSQL. Общий backend для Telegram MVP и будущего веба.
 Владельцы: A — домен, данные и поиск; B — ассистент, интеграции LLM/STT/TTS.
-Общие файлы — по договорённости.
+Границы ownership — в [`../ROLES.md`](../ROLES.md).
 
 ## Слои
 

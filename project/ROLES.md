@@ -30,7 +30,7 @@ API или формата ответа — сначала в `docs/api/README.md
 | Telegram-бот | — | владелец |
 | Scheduler напоминаний | владелец | notifier и UX |
 | React frontend | — | владелец |
-| Docker Compose, деплой | backend/db часть | владелец |
+| Docker Compose, деплой | backend env и миграции | владелец |
 | E2E, демо-сценарий | домен/поиск | владелец |
 | README, `docs/demo.md` | разделы backend | владелец |
 
@@ -47,19 +47,37 @@ API или формата ответа — сначала в `docs/api/README.md
 | `backend/app/schemas/chat.py`, `tools.py` | B |
 | `backend/app/integrations/llm.py`, `stt.py`, `tts.py`, `telegram_notifier.py` | B |
 | `backend/app/integrations/embeddings.py` | A |
-| `backend/migrations/` | A |
-| `backend/tests/` | A: домен; B: ассистент; e2e — вместе |
+| `backend/app/main.py`, `core/`, `workers/` | A |
+| `backend/pyproject.toml`, `alembic.ini`, `migrations/` | A |
+| `backend/tests/test_events.py`, `test_datetime_parser.py`, `test_search.py` | A |
+| `backend/tests/test_chat.py` | B |
+| `backend/tests/test_e2e.py` | вместе |
 | `telegram_bot/` | B |
 | `frontend/` | B |
+| `.env.example` | B (A даёт `DATABASE_URL` и backend-переменные) |
 | `infra/docker/docker-compose.yml` | B (A даёт backend env и миграции) |
 | `infra/docker/Dockerfile.backend` | A |
+| `infra/docker/Dockerfile.bot`, `Dockerfile.frontend` | B |
 | `infra/deploy/` | B |
 | `scripts/import_csv.py`, `seed_demo.py`, `eval_search.py` | A |
 | `scripts/e2e/` | B |
-| `docs/api/README.md` | A — владелец схем, B — chat/voice |
+| `docs/api/README.md` | A — events/search; B — chat/voice; merge через PR |
 | `docs/demo.md` | B |
 | `README.md` | B |
 | `docs/decisions/`, `PLAN.md` | вместе |
+
+## Стыки без пересечений
+
+| Что | Кто делает | Кто не лезет |
+|---|---|---|
+| `/events`, `/search`, БД, даты | A | B не пишет SQL и не меняет модели |
+| `/chat`, `/voice`, LLM, tools | B | A не пишет промпты и не меняет ответы ассистента |
+| `backend/app/main.py` | A регистрирует роутеры | B просит A подключить новый роутер |
+| `TelegramNotifier` | A вызывает при due, B реализует отправку | A не импортирует aiogram |
+| `docker-compose.yml` | B | A даёт `Dockerfile.backend`, env и команду миграций |
+| `.env.example` | B | A даёт только backend-переменные |
+| `docs/api/README.md` | A — events/search, B — chat/voice | без PR контракт не меняем |
+| `PLAN.md`, ADR | вместе | изменения только через PR |
 
 ## Контракт API — фиксируем в первый час
 

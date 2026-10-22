@@ -348,7 +348,9 @@ MVP работает через long polling, без публичного webhoo
 - **B — Assistant / Telegram & Web UX:** LLM, tools, диалог, `/chat`, `/voice`,
   STT/TTS, Telegram-бот, frontend, деплой, e2e.
 
-Общие зоны: контракт API, `docker-compose.yml`, README, демо-сценарий.
+Общие зоны: только контракт API и ADR. `docker-compose.yml`, README и демо — B;
+A даёт backend-переменные, `Dockerfile.backend` и миграции. `backend/app/main.py`
+принадлежит A: B не редактирует его, а просит подключить роутер.
 
 ## 15. График
 
