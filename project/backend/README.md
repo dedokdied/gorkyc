@@ -16,7 +16,8 @@ app/
 │   └── health.py            # вместе
 ├── core/                    # конфиг, логи, безопасность
 │   ├── config.py            # pydantic-settings, .env
-│   └── logging.py           # structlog, request_id
+│   ├── logging.py           # structlog, request_id
+│   └── middleware.py        # X-Request-ID
 ├── models/                  # A: SQLAlchemy-модели
 ├── schemas/                 # DTO и tool-схемы
 │   ├── events.py            # A
@@ -71,22 +72,56 @@ class DatetimeParser(Protocol):
 - B может работать с mock-сервером, пока A не закончил БД.
 - A может тестировать сервисы без LLM, пока B не подключил провайдера.
 - Любое изменение DTO — через PR в `docs/api/README.md`.
+- Схема БД управляется только Alembic. `Base.metadata.create_all` в runtime
+  запрещён: он маскирует расхождения миграций.
+- `user_id` берётся из `X-Demo-User` в текущем demo-режиме, не из тела запроса.
+- Ошибки API возвращаются в конверте `{"error": {"code", "message",
+  "request_id"}}`; `request_id` также пишется в `X-Request-ID` и логи.
 
-## Запуск (когда появится код)
+## Векторный поиск
+
+В текущем окружении `pgvector` недоступен, поэтому работает FTS (`russian`) +
+`pg_trgm`, а `events.embedding` хранится как `JSONB`-заглушка. Флаг
+`ENABLE_VECTOR_SEARCH=false`. Подробности и план включения —
+`project/docs/decisions/0002-vector-search-deferred.md`.
+
+## Запуск
 
 ```bash
 cd project/backend
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate
 pip install -e ".[dev]"
+export DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/assistant"
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Тесты:
+`alembic` читает `DATABASE_URL` из окружения (или `.env`) через
+`app.core.config.settings`; URL в `alembic.ini` — только fallback.
+
+## Тесты
+
+Тесты используют отдельную БД `assistant_test` (создаётся автоматически) и не
+трогают `assistant`. По умолчанию имя берётся из `DATABASE_URL` с суффиксом
+`_test`; можно переопределить:
 
 ```bash
+export TEST_DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/assistant_test"
 pytest
 ruff check .
 mypy app
 ```
+
+Проверка миграций на пустой БД:
+
+```bash
+createdb review_migrate
+DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/review_migrate" \
+  alembic upgrade head
+```
+
+## Ограничения
+
+- Векторный поиск отложен (см. ADR 0002).
+- `sessions`/`messages` и `/chat` относятся к зоне B и в этом PR не меняются.

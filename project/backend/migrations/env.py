@@ -9,6 +9,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+from app.core.config import settings
+
+# DATABASE_URL is the single source of truth for both the app and migrations.
+# Escape percent signs because Alembic uses configparser interpolation.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+
 from app.models import Base
 
 target_metadata = Base.metadata

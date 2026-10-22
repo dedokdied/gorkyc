@@ -8,7 +8,8 @@ docs/
 ├── api/
 │   └── README.md        # контракт API, DTO, ошибки
 └── decisions/
-    └── 0001-architecture.md  # ADR (создать при первом решении)
+    ├── 0001-architecture.md  # ADR (создать при первом решении)
+    └── 0002-vector-search-deferred.md  # pgvector отложен
 ```
 
 ## Что здесь держать

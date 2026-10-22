@@ -8,6 +8,8 @@
 - Base URL: `/api/v1`
 - Формат: JSON, UTF-8.
 - Время: ISO 8601 с таймзоной (`2026-10-23T10:00:00+03:00`), хранение в UTC.
+  Поля события (`starts_at`, `ends_at`, `due_at`) возвращаются в таймзоне
+  события; `created_at`/`updated_at` — в UTC.
 - Авторизация на время хакатона: demo-user. Заголовок `X-Demo-User: demo`
   (позже заменяется на JWT без изменения остальных DTO).
 - Ошибки:
@@ -21,6 +23,11 @@
   }
 }
 ```
+
+`request_id` также возвращается в заголовке `X-Request-ID`. Если клиент передал
+`X-Request-ID`, сервер сохраняет его; иначе генерирует новый. Коды ошибок:
+`validation_error` (422), `not_found` (404), `meeting_overlap` (409),
+`unauthorized` (401), `internal_error` (500).
 
 ## Владение эндпоинтами
 
@@ -63,7 +70,12 @@
 - Для `meeting` обязательны `starts_at` и `ends_at` (или `duration_minutes`,
   из которой backend считает `ends_at`).
 - Для `reminder` обязателен `due_at`.
-- `title` — 1–300 символов.
+- `title` — 1–300 символов; пробелы по краям обрезаются.
+- Даты должны быть timezone-aware. Naive datetime отклоняется (422).
+- Если для встречи переданы и `ends_at`, и `duration_minutes`, они должны
+  совпадать.
+- `timezone` — IANA-таймзона (например, `Europe/Moscow`).
+- `source` не принимается от клиента: источник проставляет сервер.
 
 ### EventRead
 
@@ -79,16 +91,44 @@
   "due_at": null,
   "duration_minutes": 60,
   "timezone": "Europe/Moscow",
+  "source": "text",
+  "recurrence": null,
   "created_at": "2026-10-22T12:00:00Z",
   "updated_at": "2026-10-22T12:00:00Z",
   "completed_at": null
 }
 ```
 
+`source`: `text`, `voice`, `import`. `recurrence` — строка правила (например,
+RRULE) или `null`; в текущем ядре не раскрывается в отдельные события.
+
+`DELETE /events/{id}` удаляет событие. Статус `cancelled` зарезервирован для
+будущего сценария отмены; текущий контракт не требует отдельного endpoint.
+
 ### EventPatch
 
-Любое подмножество полей `EventCreate`, кроме `type` (тип не меняется). При
-переносе встречи пересчитывается `ends_at`.
+Любое подмножество полей `EventCreate`, кроме `type` (тип не меняется).
+`status` через PATCH не меняется: для завершения используется
+`POST /events/{id}/complete`, для удаления — `DELETE`.
+
+- Отсутствующее поле не меняется.
+- Явный `null` очищает nullable-поле (`description`, `due_at`, `ends_at`,
+  `recurrence`).
+- Обязательные для типа поля нельзя очистить: `starts_at`/`ends_at` у встречи,
+  `due_at` у напоминания.
+- При переносе встречи пересчитывается `ends_at`; при изменении `ends_at`
+  пересчитывается `duration_minutes`.
+
+### Список событий
+
+`GET /events?from=...&to=...&type=...`
+
+- `from`/`to` — timezone-aware ISO 8601.
+- В период попадают события, чей интервал пересекает `[from, to]`:
+  `start = coalesce(starts_at, due_at)`,
+  `end = coalesce(ends_at, due_at, starts_at)`.
+- События без дат в выборку за период не попадают.
+- `type` — `task`, `meeting`, `reminder`.
 
 ### SearchRequest
 
@@ -102,6 +142,12 @@
 }
 ```
 
+- `query` — 1–500 символов; пустая строка после `strip()` отклоняется.
+- `type` — фильтр по типу события.
+- `from`/`to` — timezone-aware ISO 8601, та же семантика периода, что у
+  `GET /events`.
+- `limit` — 1–50, по умолчанию 5.
+
 ### SearchHit
 
 ```json
@@ -111,6 +157,17 @@
   "snippet": "Проверить договор ..."
 }
 ```
+
+`score` — относительная релевантность: `0.7 * ts_rank_cd + 0.3 * similarity`
+(PostgreSQL FTS + pg_trgm), не позиция в выдаче. `snippet` — начало
+`search_text` (до 160 символов).
+
+### Векторный поиск
+
+В демо-окружении расширение `pgvector` недоступно, поэтому включён только
+FTS + trigram. `embedding` хранится как JSONB-заглушка, флаг
+`ENABLE_VECTOR_SEARCH=false`. Решение и условия включения —
+`project/docs/decisions/0002-vector-search-deferred.md`.
 
 ### ChatRequest
 

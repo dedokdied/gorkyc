@@ -24,7 +24,7 @@ class PendingActionRepository:
         # deactivate previous active
         await self.db.execute(
             update(PendingAction)
-            .where(PendingAction.session_key == session_key, PendingAction.is_active == True)
+            .where(PendingAction.session_key == session_key, PendingAction.is_active.is_(True))
             .values(is_active=False)
         )
         pa = PendingAction(
@@ -43,10 +43,16 @@ class PendingActionRepository:
         return pa
 
     async def get_active(self, session_key: str) -> PendingAction | None:
-        stmt = select(PendingAction).where(
-            PendingAction.session_key == session_key,
-            PendingAction.is_active == True,
-        ).order_by(PendingAction.created_at.desc())
+        stmt = (
+            select(PendingAction)
+            .where(
+                PendingAction.session_key == session_key,
+                PendingAction.is_active.is_(True),
+                PendingAction.expires_at > datetime.now(UTC),
+            )
+            .order_by(PendingAction.created_at.desc())
+            .limit(1)
+        )
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 

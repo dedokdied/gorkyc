@@ -12,6 +12,8 @@
 
 - **Backend:** Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2.
 - **БД:** PostgreSQL 16/17, pgvector, pg_trgm, FTS `russian`.
+  В текущем демо-окружении `pgvector` недоступен, поэтому включён FTS + trigram;
+  см. [`docs/decisions/0002-vector-search-deferred.md`](docs/decisions/0002-vector-search-deferred.md).
 - **LLM:** дешёвое API с tool calling через LiteLLM / OpenAI-compatible.
 - **Голос:** faster-whisper + Silero VAD, TTS — edge-tts с fallback.
 - **Frontend:** React + TypeScript + Vite, Tailwind, TanStack Query.
