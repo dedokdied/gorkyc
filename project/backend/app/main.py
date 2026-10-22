@@ -2,13 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import models  # noqa: F401
 from app.api import events, health, search
 from app.api.chat import build_chat_router
-from app.api.deps import resolve_telegram_user
+from app.api.deps import resolve_api_user
 from app.api.voice import build_voice_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger, get_request_id
@@ -78,6 +79,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Voice Assistant", version="1.0.0", lifespan=lifespan)
 app.add_middleware(RequestIDMiddleware)
 
+_web_origins = [origin.strip() for origin in settings.web_origin.split(",") if origin.strip()]
+if _web_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_web_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", None) or get_request_id() or "-"
@@ -145,14 +155,14 @@ app.include_router(search.router, prefix="/api/v1")
 app.include_router(
     build_chat_router(
         assistant=assistant,
-        resolve_user=resolve_telegram_user,
+        resolve_user=resolve_api_user,
     ),
     prefix="/api/v1",
 )
 app.include_router(
     build_voice_router(
         voice=voice_service,
-        resolve_user=resolve_telegram_user,
+        resolve_user=resolve_api_user,
     ),
     prefix="/api/v1",
 )

@@ -65,7 +65,7 @@ app/
 | Клиент | Как работает |
 |---|---|
 | Telegram-бот | `telegram_bot/` → `/chat`, `/voice` с `X-Telegram-Id` и `X-Bot-Secret` |
-| Web (этап 2) | React → тот же API с `X-Demo-User: demo` |
+| Web | React → тот же API с `X-Demo-User: demo` |
 
 Бот не дублирует бизнес-логику: только Telegram UI и вызовы API.
 

@@ -55,5 +55,16 @@ services:
       api:
         condition: service_healthy
 
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
 volumes:
   postgres_data:

@@ -38,6 +38,18 @@ python scripts/e2e/smoke.py --voice-file samples/voice.ogg
 `X-Telegram-Id` + `X-Bot-Secret` (по умолчанию `1` и `change-me`). Для
 защищённого контура задай актуальный `BOT_INTERNAL_SECRET`.
 
-## Web (этап 2)
+## Web
 
-Повторить те же сценарии в браузере, включая голосовой ввод и мобильную вёрстку.
+Автоматического browser-теста пока нет; проверка ручная по
+[`docs/demo.md`](../../docs/demo.md). Минимальный smoke:
+
+```bash
+cd project/frontend
+npm run dev
+```
+
+1. `http://localhost:5173` открывается, `/api/v1/healthz` доступен через Vite
+   proxy.
+2. Demo-пользователь видит только свои события.
+3. Чат, таймлайн (create/complete/delete), поиск и голосовой ввод работают.
+4. Сборка `npm run build` проходит; мобильная вёрстка не ломается.

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     reminders_enabled: bool = True
     reminders_interval_seconds: float = 30.0
+    web_origin: str = "http://localhost:5173"
     enable_vector_search: bool = False
     enable_rerank: bool = False
     embeddings_provider: str = "off"

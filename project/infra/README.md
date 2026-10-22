@@ -7,24 +7,26 @@ Docker Compose и деплой. Владелец — B, backend/db-часть �
 ```
 infra/
 ├── docker/
-│   ├── docker-compose.yml       # api, postgres, bot; frontend — этап 2
+│   ├── docker-compose.yml       # postgres, api, bot, web
 │   ├── Dockerfile.backend       # A
 │   ├── Dockerfile.bot           # B
-│   └── Dockerfile.frontend      # B, этап 2
+│   ├── Dockerfile.frontend      # B
+│   └── nginx.conf               # статика + прокси /api
 └── deploy/
     ├── fly.toml                 # или render.yaml / railway.json
     └── env.example
 ```
 
-## Docker Compose: Telegram MVP
+## Docker Compose
 
 - `postgres` — `pgvector/pgvector:pg16` с `pg_trgm` и `vector`.
 - `api` — FastAPI, миграции Alembic, фоновый worker напоминаний.
 - `bot` — aiogram, long polling, зависит от `api`.
-- `frontend` — **не входит в Telegram MVP**, этап 5.
+- `web` — production-сборка frontend на nginx, порт `${WEB_PORT:-8080}`;
+  `nginx` проксирует `/api/` на `api:8000`.
 
-Публичный webhook боту не нужен: long polling. API наружу не публикуем,
-бот ходит по внутренней сети.
+Публичный webhook боту не нужен: long polling. Web и бот ходят к API по
+внутренней сети; для локальной разработки API опубликован на `8000`.
 
 ```bash
 cp .env.example .env
@@ -58,6 +60,8 @@ docker compose -f infra/docker/docker-compose.yml ps
 | `ENABLE_VECTOR_SEARCH` | включить pgvector |
 | `ENABLE_RERANK` | включить reranker |
 | `EMBEDDINGS_PROVIDER` | `local`, `api` или `off` |
+| `WEB_ORIGIN` | origin(ы) web-клиента для CORS через запятую |
+| `WEB_PORT` | порт web-контейнера, по умолчанию `8080` |
 | `APP_TZ` | таймзона по умолчанию |
 
 Секреты — только в secrets хостинга, не в git.
@@ -74,17 +78,19 @@ docker compose -f infra/docker/docker-compose.yml ps
 - Запуск на VPS: `./scripts/deploy.sh`.
 - Приёмка: `python scripts/e2e/smoke.py`.
 
-### Web (этап 2)
+### Web
 
-- Frontend — Vercel / Netlify / тот же VPS.
-- Caddy — авто-TLS, прокси на `api` и `frontend`.
-- `WEB_ORIGIN` и CORS.
+- `web` — nginx со статикой; `/api/` проксируется на `api:8000`, поэтому в
+  compose CORS для same-origin запросов не нужен.
+- При отдельном размещении frontend (Vercel/Netlify) задать `WEB_ORIGIN` на
+  backend и `VITE_API_BASE_URL` на frontend.
+- Caddy/ingress — авто-TLS перед `web`.
 - Демо-ссылка открывается без VPN.
 
 ## Definition of Done
 
-- `docker compose up` поднимает Telegram MVP с нуля.
+- `docker compose up` поднимает Telegram MVP и web с нуля.
 - Миграции применяются автоматически или одной командой.
 - Бот отвечает в Telegram, напоминания приходят.
 - Секреты не попадают в репозиторий.
-- После этапа 2 открывается веб-демо.
+- Web-демо открывается на `WEB_PORT` и ходит в API через nginx.

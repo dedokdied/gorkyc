@@ -12,8 +12,10 @@
   события; `created_at`/`updated_at` — в UTC.
 - Авторизация на время хакатона:
   - Telegram-бот: `X-Telegram-Id: <chat_id>` + `X-Bot-Secret: <secret>`;
-  - Web: `X-Demo-User: demo`.
+  - Web: `X-Demo-User: demo` (если заголовок не передан — `demo`);
+  - при наличии Telegram-заголовков они имеют приоритет.
   Позже заменяется на JWT без изменения остальных DTO.
+- CORS для web: origin(ы) из `WEB_ORIGIN` (список через запятую).
 - Telegram-бот — тонкий клиент: сам не пишет в БД и не вызывает LLM.
 - Ошибки:
 
@@ -290,7 +292,7 @@ POST /search {"query": "задача про презентацию", "limit": 5}
 | Клиент | Заголовки | Что использует |
 |---|---|---|
 | Telegram-бот | `X-Telegram-Id`, `X-Bot-Secret` | `/chat`, `/voice`, `/events`, `/search` |
-| Web (этап 2) | `X-Demo-User: demo` | те же эндпоинты |
+| Web | `X-Demo-User: demo` | те же эндпоинты |
 
 ## Изменения контракта
 

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app.schemas.chat import VoiceResponse
 from app.services.voice import VoiceError, VoiceService
 
-UserResolver = Callable[[int, str], Awaitable[str]]
+UserResolver = Callable[[int | None, str | None, str | None], Awaitable[str]]
 MAX_AUDIO_BYTES = 20 * 1024 * 1024
 
 
@@ -22,13 +22,14 @@ def build_voice_router(
 
     @router.post("/voice", response_model=VoiceResponse)
     async def transcribe_voice(
-        x_telegram_id: Annotated[int, Header(alias="X-Telegram-Id")],
-        x_bot_secret: Annotated[str, Header(alias="X-Bot-Secret")],
         file: Annotated[UploadFile, File()],
+        x_telegram_id: Annotated[int | None, Header(alias="X-Telegram-Id")] = None,
+        x_bot_secret: Annotated[str | None, Header(alias="X-Bot-Secret")] = None,
+        x_demo_user: Annotated[str | None, Header(alias="X-Demo-User")] = None,
         session_id: Annotated[str | None, Form()] = None,
         timezone: Annotated[str, Form()] = "Europe/Moscow",
     ) -> VoiceResponse | JSONResponse:
-        user_id = await resolve_user(x_telegram_id, x_bot_secret)
+        user_id = await resolve_user(x_telegram_id, x_bot_secret, x_demo_user)
         audio = await file.read()
         if len(audio) > MAX_AUDIO_BYTES:
             return _error(

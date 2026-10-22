@@ -120,7 +120,13 @@ def make_chat_client(assistant: StubAssistant) -> TestClient:
     return TestClient(app)
 
 
-async def resolve_user(telegram_id: int, secret: str) -> str:
+async def resolve_user(
+    telegram_id: int | None,
+    secret: str | None,
+    demo_user: str | None,
+) -> str:
+    if telegram_id is None:
+        return demo_user or "demo"
     assert telegram_id == 42
     assert secret == "test-secret"
     return "user-1"
@@ -141,12 +147,28 @@ def test_chat_route_resolves_user_and_returns_response() -> None:
     assert assistant.calls[0]["user_id"] == "user-1"
 
 
-def test_chat_route_requires_internal_headers() -> None:
-    client = make_chat_client(StubAssistant())
+def test_chat_route_allows_demo_user() -> None:
+    assistant = StubAssistant()
+    client = make_chat_client(assistant)
 
-    response = client.post("/chat", json={"text": "создай встречу"})
+    response = client.post(
+        "/chat",
+        json={"text": "напомни встречу"},
+        headers={"X-Demo-User": "alice"},
+    )
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert assistant.calls[0]["user_id"] == "alice"
+
+
+def test_chat_route_defaults_to_demo_user() -> None:
+    assistant = StubAssistant()
+    client = make_chat_client(assistant)
+
+    response = client.post("/chat", json={"text": "напомни встречу"})
+
+    assert response.status_code == 200
+    assert assistant.calls[0]["user_id"] == "demo"
 
 
 def test_clarification_route_passes_answer() -> None:

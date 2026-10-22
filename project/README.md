@@ -1,7 +1,6 @@
 # Голосовой ассистент для задач и встреч
 
-Каркас проекта. Сначала делаем **Telegram MVP**, после приёмки — **веб-версию с
-backend и frontend** на том же API.
+Telegram MVP и веб-версия работают на одном backend и API.
 
 - Полный план: [`../PLAN.md`](../PLAN.md)
 - Роли и контракт: [`ROLES.md`](ROLES.md)
@@ -15,7 +14,8 @@ backend и frontend** на том же API.
 2. **Web** — React-интерфейс, чат, таймлайн, поиск, голос в браузере.
 3. **Полировка** — тесты, CI, README, демо.
 
-Веб не начинаем, пока Telegram MVP не проходит 4 сценария.
+Telegram MVP прошёл 4 сценария; веб-клиент использует тот же API и
+`X-Demo-User`, без отдельного backend.
 
 ## Стек
 
@@ -58,7 +58,7 @@ project/
 │   │   ├── keyboards.py
 │   │   └── config.py
 │   └── tests/
-├── frontend/                 # этап 2
+├── frontend/                 # React + Vite web-клиент
 ├── infra/
 │   ├── docker/               # api, postgres, bot, frontend
 │   └── deploy/

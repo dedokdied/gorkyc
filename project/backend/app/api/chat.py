@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header
 from app.schemas.chat import ChatRequest, ChatResponse, ClarificationAnswer
 from app.services.assistant import Assistant
 
-UserResolver = Callable[[int, str], Awaitable[str]]
+UserResolver = Callable[[int | None, str | None, str | None], Awaitable[str]]
 
 
 def build_chat_router(
@@ -21,10 +21,11 @@ def build_chat_router(
     @router.post("/chat", response_model=ChatResponse)
     async def chat(
         payload: ChatRequest,
-        x_telegram_id: Annotated[int, Header(alias="X-Telegram-Id")],
-        x_bot_secret: Annotated[str, Header(alias="X-Bot-Secret")],
+        x_telegram_id: Annotated[int | None, Header(alias="X-Telegram-Id")] = None,
+        x_bot_secret: Annotated[str | None, Header(alias="X-Bot-Secret")] = None,
+        x_demo_user: Annotated[str | None, Header(alias="X-Demo-User")] = None,
     ) -> ChatResponse:
-        user_id = await resolve_user(x_telegram_id, x_bot_secret)
+        user_id = await resolve_user(x_telegram_id, x_bot_secret, x_demo_user)
         return await assistant.handle(
             user_id,
             payload.text,
@@ -39,10 +40,11 @@ def build_chat_router(
     async def answer_clarification(
         clarification_id: str,
         payload: ClarificationAnswer,
-        x_telegram_id: Annotated[int, Header(alias="X-Telegram-Id")],
-        x_bot_secret: Annotated[str, Header(alias="X-Bot-Secret")],
+        x_telegram_id: Annotated[int | None, Header(alias="X-Telegram-Id")] = None,
+        x_bot_secret: Annotated[str | None, Header(alias="X-Bot-Secret")] = None,
+        x_demo_user: Annotated[str | None, Header(alias="X-Demo-User")] = None,
     ) -> ChatResponse:
-        user_id = await resolve_user(x_telegram_id, x_bot_secret)
+        user_id = await resolve_user(x_telegram_id, x_bot_secret, x_demo_user)
         return await assistant.answer_clarification(
             user_id,
             clarification_id,

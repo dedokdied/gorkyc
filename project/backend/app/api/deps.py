@@ -80,3 +80,20 @@ async def resolve_telegram_user(telegram_id: int, secret: str) -> UUID:
             x_bot_secret=secret,
             db=db,
         )
+
+
+async def resolve_api_user(
+    telegram_id: int | None,
+    secret: str | None,
+    demo_user: str | None,
+) -> UUID:
+    if telegram_id is not None:
+        return await resolve_telegram_user(telegram_id, secret or "")
+
+    async with SessionLocal() as db:
+        return await get_current_user_id(
+            x_telegram_id=None,
+            x_bot_secret=None,
+            x_demo_user=demo_user,
+            db=db,
+        )
