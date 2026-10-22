@@ -112,6 +112,23 @@ async def test_mock_mode_works_without_backend() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mock_events_can_be_filtered_by_period() -> None:
+    api = ApiClient(make_settings(bot_mock_mode=True))
+    try:
+        all_events = await api.list_events(7)
+        today_events = await api.list_events(
+            7,
+            start="2026-01-01T00:00:00+03:00",
+            end="2026-01-02T00:00:00+03:00",
+        )
+    finally:
+        await api.close()
+
+    assert len(all_events) == 3
+    assert today_events == []
+
+
+@pytest.mark.asyncio
 async def test_list_events_unwraps_items() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.params["status"] == "planned"

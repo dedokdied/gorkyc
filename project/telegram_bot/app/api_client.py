@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -102,6 +104,9 @@ class ApiClient:
         start: str | None = None,
         end: str | None = None,
     ) -> list[dict[str, Any]]:
+        if self._settings.bot_mock_mode:
+            return self._mock_events(start, end)
+
         params = {
             "from": start,
             "to": end,
@@ -181,6 +186,64 @@ class ApiClient:
             clarification=clarification if isinstance(clarification, dict) else None,
             audio_url=data.get("audio_url"),
         )
+
+    def _mock_events(
+        self,
+        start: str | None,
+        end: str | None,
+    ) -> list[dict[str, Any]]:
+        zone = ZoneInfo(self._settings.app_tz)
+        today = datetime.now(zone).date()
+        moments = [
+            (
+                datetime.combine(today, time(15, 0), tzinfo=zone),
+                "meeting",
+                "Встреча с Иваном",
+            ),
+            (
+                datetime.combine(today + timedelta(days=1), time(10, 0), tzinfo=zone),
+                "reminder",
+                "Позвонить Ивану",
+            ),
+            (
+                datetime.combine(today + timedelta(days=3), time(12, 0), tzinfo=zone),
+                "task",
+                "Подготовить договор",
+            ),
+        ]
+        start_at = self._parse_moment(start)
+        end_at = self._parse_moment(end)
+
+        result: list[dict[str, Any]] = []
+        for index, (moment, event_type, title) in enumerate(moments):
+            if start_at and moment < start_at:
+                continue
+            if end_at and moment >= end_at:
+                continue
+            event: dict[str, Any] = {
+                "id": f"mock-event-{index}",
+                "type": event_type,
+                "status": "planned",
+                "title": title,
+            }
+            if event_type == "reminder":
+                event["due_at"] = moment.isoformat()
+            else:
+                event["starts_at"] = moment.isoformat()
+            result.append(event)
+        return result
+
+    @staticmethod
+    def _parse_moment(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if moment.tzinfo is None:
+            return moment.replace(tzinfo=ZoneInfo("UTC"))
+        return moment
 
     @staticmethod
     def _mock_chat(telegram_id: int, text: str) -> ChatResult:
