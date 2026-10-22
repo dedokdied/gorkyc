@@ -9,6 +9,7 @@
 | `eval_search.py` | A | golden-set, Recall@5/MRR, проверка падежей и опечаток |
 | `eval_nlu.py` | вместе | 50–100 фраз: intent, слоты, даты |
 | `deploy.sh` | B | сборка и деплой (не хранить секреты) |
+| `e2e/` | B | сценарии Telegram MVP и веба |
 
 ## Правила импорта CSV
 

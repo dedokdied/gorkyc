@@ -1,128 +1,155 @@
 # Роли и рабочий контракт
 
-Два участника, две вертикальные зоны. Работаем по OpenClaw-плану из `PLAN.md`.
-Правило №1: не редактируем чужую зону без сообщения. Любое изменение контракта —
-сначала в `docs/tools.md`, потом в коде.
+Два участника, две вертикальные зоны. Сначала Telegram MVP, потом веб на том же
+backend. Правило №1: не редактируем чужую зону без сообщения. Любое изменение
+API или формата ответа — сначала в `docs/api/README.md`, потом в коде.
 
 ## Кто есть кто
 
 | | Участник A | Участник B |
 |---|---|---|
-| **Роль** | Plugin / Domain & Data | OpenClaw Runtime / Skill & Delivery |
-| **Главный результат** | Плагин, домен, БД, даты, поиск | Gateway, каналы, skill, голос, automations, деплой |
-| **Не делает** | Каналы, `SKILL.md`, деплой | Схему БД, SQL, доменные сервисы, tool-схемы |
+| **Роль** | Backend Core / Data & API | Assistant / Telegram & Web UX |
+| **Главный результат** | БД, события, даты, поиск, API | LLM, tools, бот, голос, frontend, деплой |
+| **Первый этап** | backend core + `/events`, `/search` | Telegram-бот + `/chat`, `/voice` |
+| **Второй этап** | API для веба, стабильность, тесты | React-фронтенд, голос в браузере |
+| **Не делает** | LLM-промпты, бота, фронтенд | Схему БД, SQL, доменные сервисы |
 
 ## Кто что делает
 
 | Зона | A | B |
 |---|---|---|
-| OpenClaw Gateway, модели, fallback | — | настраивает |
-| Telegram / Control UI / STT / TTS | — | настраивает |
-| `openclaw.plugin.json`, manifest, configSchema | владелец | не меняет |
-| Tools и TypeBox-схемы | владелец | не меняет |
-| `services/`, `repositories/`, `db/`, миграции | владелец | не меняет |
-| `pending_actions`, `last_entity_id` | владелец | использует через tools |
-| `DatetimeParser`, поиск, импорт CSV | владелец | не меняет |
-| `SKILL.md`, промпты, сценарии уточнений | даёт контракт tools | владелец |
-| Маппинг `peer_id → user_id` | хранит и валидирует | передаёт trusted-контекст |
-| Reminder automations | контракт и `metadata` | создаёт/отменяет job |
-| Docker Compose, Postgres | требования к БД | владелец compose |
-| Деплой и демо-ссылка | — | владелец |
-| E2E и демо-сценарий | домен/поиск | владелец |
-| README и `docs/demo.md` | разделы домена | владелец |
+| PostgreSQL, миграции, модели | владелец | не меняет |
+| `EventService`, CRUD, список | владелец | вызывает API |
+| `DatetimeParser` | владелец | не меняет |
+| Поиск FTS/trigram/pgvector | владелец | не меняет |
+| Импорт CSV, seed | владелец | использует данные |
+| `/events`, `/search`, health | владелец | не меняет |
+| `/chat`, `/voice`, история | участвует в контракте | владелец |
+| LLM, tool calling, `pending_actions` | не пишет промпты | владелец |
+| STT/TTS | — | владелец |
+| Telegram-бот | — | владелец |
+| Scheduler напоминаний | владелец | notifier и UX |
+| React frontend | — | владелец |
+| Docker Compose, деплой | backend/db часть | владелец |
+| E2E, демо-сценарий | домен/поиск | владелец |
+| README, `docs/demo.md` | разделы backend | владелец |
 
 ## Владение файлами
 
 | Папка / файл | Владелец |
 |---|---|
-| `plugin/openclaw.plugin.json`, `package.json`, `src/index.ts` | A |
-| `plugin/src/{tools,services,repositories,db,schemas}/` | A |
-| `plugin/src/integrations/embeddings*` | A |
-| `plugin/src/integrations/openclaw*`, `reminders*` | B |
-| `plugin/tests/{unit,integration}/` | A |
-| `skills/` | B |
-| `openclaw/` (config, workspace) | B |
-| `infra/docker/` | B (A даёт env и команду миграций) |
+| `backend/app/models/`, `repositories/` | A |
+| `backend/app/services/events.py`, `datetime_parser.py`, `search.py`, `reminders.py` | A |
+| `backend/app/services/dialogue.py`, `assistant.py` | B |
+| `backend/app/api/events.py`, `search.py`, `health.py` | A |
+| `backend/app/api/chat.py`, `voice.py` | B |
+| `backend/app/schemas/events.py`, `search.py` | A |
+| `backend/app/schemas/chat.py`, `tools.py` | B |
+| `backend/app/integrations/llm.py`, `stt.py`, `tts.py`, `telegram_notifier.py` | B |
+| `backend/app/integrations/embeddings.py` | A |
+| `backend/migrations/` | A |
+| `backend/tests/` | A: домен; B: ассистент; e2e — вместе |
+| `telegram_bot/` | B |
+| `frontend/` | B |
+| `infra/docker/docker-compose.yml` | B (A даёт backend env и миграции) |
+| `infra/docker/Dockerfile.backend` | A |
 | `infra/deploy/` | B |
-| `scripts/import-csv.ts`, `scripts/eval-search.ts` | A |
+| `scripts/import_csv.py`, `seed_demo.py`, `eval_search.py` | A |
 | `scripts/e2e/` | B |
-| `docs/tools.md` | A |
-| `docs/demo.md`, `README.md` | B |
-| `docs/decisions/`, `project/PLAN.md` | вместе |
+| `docs/api/README.md` | A — владелец схем, B — chat/voice |
+| `docs/demo.md` | B |
+| `README.md` | B |
+| `docs/decisions/`, `PLAN.md` | вместе |
 
-## Контракт tools — фиксируем в первый час
+## Контракт API — фиксируем в первый час
 
-Минимальный набор:
+Базовый префикс: `/api/v1`.
 
 ```text
-create_event
-update_event
-complete_event
-delete_event
-list_events
-search_events
-get_current_datetime
+GET/POST   /events
+GET/PATCH  /events/{id}
+DELETE     /events/{id}
+POST       /events/{id}/complete
+POST       /search
+POST       /chat
+POST       /voice
+GET        /sessions/{id}/messages
+POST       /clarifications/{id}/answer
+GET        /healthz, /readyz
 ```
 
-Единый ответ tool:
+Формат `/chat`:
 
 ```json
 {
-  "status": "done | needs_clarification | error",
-  "entity": null,
-  "reply": "короткий текст для пользователя",
-  "missing": ["starts_at"],
-  "pending_action_id": "uuid или null",
-  "clarification": "Во сколько?",
-  "error_code": null
+  "session_id": "uuid",
+  "reply": "Создал встречу: завтра, 15:00 — Иван",
+  "action": { "name": "create_event", "status": "done", "entity_id": "uuid" },
+  "clarification": null,
+  "audio_url": null
+}
+```
+
+Уточнение:
+
+```json
+{
+  "session_id": "uuid",
+  "reply": "Во сколько поставить встречу?",
+  "action": null,
+  "clarification": {
+    "id": "uuid",
+    "question": "Во сколько?",
+    "options": ["10:00", "15:00", "Выбрать"],
+    "missing": ["starts_at"]
+  }
 }
 ```
 
 Правила:
 
-- `user_id`, `session_key`, `source` берутся из trusted-контекста OpenClaw, **не из аргументов LLM**.
-- LLM передаёт `time_expression` / `duration_expression`, а не готовые даты.
-- При нехватке слота tool сохраняет `pending_action` и возвращает `needs_clarification`.
-- Напоминание: B создаёт automation, A хранит `automation_id` в `events.metadata`.
-- Ошибки — кодами, без stack trace и SQL в ответе модели.
+- `user_id` берётся из `X-Telegram-Id`/`X-Demo-User`, не из тела запроса.
+- Telegram-бот передаёт `X-Bot-Secret`; снаружи API не доступен.
+- LLM передаёт `time_expression`, а не ISO-даты.
+- Ошибки — кодами, без SQL и stack trace.
 
 ## Интерфейс напоминаний
 
-A вызывает интерфейс, B реализует его через OpenClaw:
+A отвечает за выборку due-напоминаний, B — за отправку в Telegram.
 
-```ts
-interface ReminderScheduler {
-  schedule(input: {
-    userId: string;
-    sessionKey: string;
-    fireAt: string;
-    text: string;
-  }): Promise<{ automationId: string }>;
-  cancel(automationId: string): Promise<void>;
-}
+```python
+class ReminderNotifier(Protocol):
+    async def send(self, telegram_id: int, text: str) -> None: ...
 ```
 
 ## Первый час — вместе
 
-- Зафиксировать версию OpenClaw и Node; записать в README.
-- Согласовать `docs/tools.md`: имена, аргументы, ответы, ошибки.
-- Определить demo-user и маппинг `peer_id`.
-- A: manifest + stub одного tool + схема БД.
-- B: OpenClaw + Telegram + модель + установка stub-плагина + черновик `SKILL.md`.
+- Зафиксировать `docs/api/README.md`: DTO, ошибки, chat/voice.
+- Определить demo-user и маппинг Telegram `chat_id → user_id`.
+- A: схемы БД, миграции, stub `/events`, `/search`.
+- B: skeleton `telegram_bot`, `/chat` на моках, `.env.example`.
+- Поднять Docker Compose: `api`, `postgres`, `bot`.
 
 ## Правила, чтобы не мешать
 
-1. A работает в `feat/plugin-*`, B — в `feat/openclaw-*`.
+1. A работает в `feat/core-*`, B — в `feat/assistant-*`.
 2. Один активный PR на человека; общие файлы — отдельным маленьким PR.
 3. Сначала заглушка/интерфейс, потом реализация — второй не ждёт.
-4. Моки обязательны: A тестирует домен без OpenClaw, B тестирует tool через stub.
-5. Контракт меняем только через `docs/tools.md` и сообщение в чат.
-6. Секреты и токены — только в env/secrets, никогда в git.
-7. Версию OpenClaw не обновляем до сдачи.
-8. Синк на старте и в конце дня: 15 минут, только блокеры и изменения контракта.
+4. Моки обязательны: A тестирует домен без LLM, B тестирует бота на mock API.
+5. Контракт меняем только через `docs/api/README.md` и сообщение в чат.
+6. Секреты — только в env/secrets, никогда в git.
+7. Синк на старте и в конце дня: 15 минут, только блокеры и контракт.
 
 ## Definition of Done
 
-- A: tools валидируются, миграции применяются, даты и поиск покрыты тестами, seed из CSV работает.
-- B: Gateway и Telegram стабильны, голос работает, reminder срабатывает, skill ведёт уточнения, деплой открывается.
-- Вместе: 4 обязательных сценария end-to-end, данные сохраняются после перезапуска, README поднимает проект с нуля, демо-ссылка живая.
+### Telegram MVP
+
+- A: миграции, CRUD, даты, поиск, seed, тесты домена.
+- B: бот работает, текст и голос, уточнения, `/chat`, `/voice`, деплой.
+- Вместе: 4 сценария, напоминание, данные после перезапуска, README.
+
+### Web
+
+- A: API стабилен, CORS, тесты, demo-user.
+- B: React-чат, таймлайн, поиск, карточки, голос, адаптив.
+- Вместе: те же 4 сценария в браузере и демо-ссылка.

@@ -1,35 +1,42 @@
 # Infra
 
-Docker Compose и деплой. Владелец — B (деплой), backend/db-часть — A.
+Docker Compose и деплой. Владелец — B, backend/db-часть — A.
 
 ## Состав
 
 ```
 infra/
 ├── docker/
-│   ├── docker-compose.yml       # api, postgres, frontend
-│   ├── Dockerfile.backend
-│   └── Dockerfile.frontend
+│   ├── docker-compose.yml       # api, postgres, bot; frontend — этап 2
+│   ├── Dockerfile.backend       # A
+│   ├── Dockerfile.bot           # B
+│   └── Dockerfile.frontend      # B, этап 2
 └── deploy/
     ├── fly.toml                 # или render.yaml / railway.json
-    └── env.example              # что задать на хостинге
+    └── env.example
 ```
 
-## Docker Compose (минимум ядра)
+## Docker Compose: Telegram MVP
 
 - `postgres:16` с расширениями `vector`, `pg_trgm`, `btree_gist`.
-- `api` — FastAPI, зависит от postgres, healthcheck.
-- `frontend` — статическая сборка Vite за Caddy/Nginx.
-- Redis/worker — **не добавлять на старте**, только если реально нужны
-  напоминания.
+- `api` — FastAPI, миграции, APScheduler напоминаний.
+- `bot` — aiogram, long polling, зависит от `api`.
+- `frontend` — **не добавляем на MVP**, только на этапе 2.
+
+Публичный webhook боту не нужен: long polling. API наружу не публикуем,
+бот ходит по внутренней сети.
 
 ## Переменные окружения
 
 | Переменная | Назначение |
 |---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://...` |
+| `TELEGRAM_BOT_TOKEN` | токен бота |
+| `BOT_INTERNAL_SECRET` | доверенный заголовок бота к API |
+| `BACKEND_URL` | URL API для бота |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | провайдер LLM |
-| `STT_PROVIDER`, `TTS_PROVIDER` | голос |
+| `STT_PROVIDER`, `STT_API_KEY` | распознавание голоса |
+| `TTS_PROVIDER` | синтез речи |
 | `ENABLE_VECTOR_SEARCH` | включить pgvector |
 | `ENABLE_RERANK` | включить reranker |
 | `EMBEDDINGS_PROVIDER` | `local`, `api` или `off` |
@@ -39,15 +46,24 @@ infra/
 
 ## Деплой
 
-- Backend: Fly.io / Render / Railway / VPS.
-- Postgres: Neon / Supabase (pgvector) или managed Postgres.
-- Frontend: Vercel / Netlify / тот же VPS.
-- Caddy — авто-TLS, прокси на api и frontend.
+### Telegram MVP
+
+- VPS / Fly.io / Render: `api` + `postgres` + `bot`.
+- Bot — long polling, без публичного порта.
+- Postgres — managed или контейнер с volume.
 - Healthchecks: `/healthz`, `/readyz`.
+
+### Web (этап 2)
+
+- Frontend — Vercel / Netlify / тот же VPS.
+- Caddy — авто-TLS, прокси на `api` и `frontend`.
+- `WEB_ORIGIN` и CORS.
+- Демо-ссылка открывается без VPN.
 
 ## Definition of Done
 
-- `docker compose up` поднимает проект с нуля.
+- `docker compose up` поднимает Telegram MVP с нуля.
 - Миграции применяются автоматически или одной командой.
-- Демо-ссылка открывается без VPN.
+- Бот отвечает в Telegram, напоминания приходят.
 - Секреты не попадают в репозиторий.
+- После этапа 2 открывается веб-демо.

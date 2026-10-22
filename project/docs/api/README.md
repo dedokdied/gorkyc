@@ -8,8 +8,11 @@
 - Base URL: `/api/v1`
 - Формат: JSON, UTF-8.
 - Время: ISO 8601 с таймзоной (`2026-10-23T10:00:00+03:00`), хранение в UTC.
-- Авторизация на время хакатона: demo-user. Заголовок `X-Demo-User: demo`
-  (позже заменяется на JWT без изменения остальных DTO).
+- Авторизация на время хакатона:
+  - Telegram-бот: `X-Telegram-Id: <chat_id>` + `X-Bot-Secret: <secret>`;
+  - Web: `X-Demo-User: demo`.
+  Позже заменяется на JWT без изменения остальных DTO.
+- Telegram-бот — тонкий клиент: сам не пишет в БД и не вызывает LLM.
 - Ошибки:
 
 ```json
@@ -122,6 +125,35 @@
 }
 ```
 
+`session_id = null` — backend создаёт сессию для текущего канала. Для Telegram
+`external_id` сессии = `chat_id`, для web — id demo-сессии.
+
+### VoiceRequest
+
+`POST /voice` — `multipart/form-data`:
+
+| Поле | Тип | Обязательно |
+|---|---|---|
+| `file` | аудио (OGG/MP3/WAV) | да |
+| `session_id` | uuid | нет |
+| `timezone` | string | нет |
+
+Ответ:
+
+```json
+{
+  "session_id": "uuid",
+  "transcript": "напомни завтра в 10 позвонить ивану",
+  "reply": "Создал напоминание: завтра в 10:00 — позвонить Ивану",
+  "action": { "name": "create_event", "status": "done", "entity_id": "uuid" },
+  "clarification": null,
+  "audio_url": null
+}
+```
+
+Если STT не распознал — `400` с `error.code = "stt_failed"`; бот просит
+повторить или написать текстом.
+
 ### ChatResponse
 
 ```json
@@ -193,7 +225,16 @@ POST /search {"query": "задача про презентацию", "limit": 5}
 - **Публичный API** принимает готовые ISO-даты (`EventCreate`).
 - **LLM-инструменты** принимают `time_expression` (исходную фразу), а сервер
   резолвит её в ISO. Модель не считает даты.
-- `user_id` всегда берётся из `X-Demo-User`/auth, не из тела запроса.
+- `user_id` всегда берётся из `X-Telegram-Id`/`X-Demo-User`/auth, не из тела
+  запроса.
+- Telegram-бот не вызывает LLM напрямую: только backend.
+
+## Клиенты
+
+| Клиент | Заголовки | Что использует |
+|---|---|---|
+| Telegram-бот | `X-Telegram-Id`, `X-Bot-Secret` | `/chat`, `/voice`, `/events`, `/search` |
+| Web (этап 2) | `X-Demo-User: demo` | те же эндпоинты |
 
 ## Изменения контракта
 

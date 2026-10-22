@@ -8,15 +8,16 @@ docs/
 ├── api/
 │   └── README.md        # контракт API, DTO, ошибки
 └── decisions/
-    └── 0001-architecture.md  # ADR (создать при первом решении)
+    └── 0001-architecture.md  # Telegram MVP → web на общем backend
 ```
 
 ## Что здесь держать
 
 - Контракт API и примеры запросов/ответов.
-- ADR: почему FastAPI, PostgreSQL, pgvector, `pending_actions`, `time_expression`.
+- ADR: почему Telegram MVP, общий backend, FastAPI, PostgreSQL, pgvector,
+  `pending_actions`, `time_expression`.
 - Сценарий демо: 10–20 фраз и ожидаемое поведение.
-- Чек-лист приёмки 4 обязательных сценариев.
+- Чек-лист приёмки 4 обязательных сценариев в Telegram, затем в вебе.
 - Инструкцию по запуску и деплою (дублируется в корневом README).
 
 ## ADR: шаблон

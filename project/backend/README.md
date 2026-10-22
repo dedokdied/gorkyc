@@ -1,7 +1,8 @@
 # Backend
 
-FastAPI + PostgreSQL. Владельцы: A — домен, данные и поиск; B — ассистент,
-интеграции LLM/STT/TTS. Общие файлы — по договорённости.
+FastAPI + PostgreSQL. Общий backend для Telegram MVP и будущего веба.
+Владельцы: A — домен, данные и поиск; B — ассистент, интеграции LLM/STT/TTS.
+Общие файлы — по договорённости.
 
 ## Слои
 
@@ -12,7 +13,8 @@ app/
 │   ├── deps.py              # зависимости: сессия БД, текущий пользователь
 │   ├── events.py            # A: CRUD, список, complete
 │   ├── search.py            # A: поиск
-│   ├── chat.py              # B: текст, голос, история
+│   ├── chat.py              # B: текст, история, уточнения
+│   ├── voice.py             # B: аудио → STT → chat
 │   └── health.py            # вместе
 ├── core/                    # конфиг, логи, безопасность
 │   ├── config.py            # pydantic-settings, .env
@@ -28,14 +30,16 @@ app/
 │   ├── events.py            # A
 │   ├── datetime_parser.py   # A
 │   ├── search.py            # A
+│   ├── reminders.py         # A: выборка due-напоминаний
 │   ├── dialogue.py          # B
 │   └── assistant.py         # B: оркестрация LLM + tools
 ├── integrations/            # внешние сервисы
 │   ├── llm.py               # B
 │   ├── stt.py               # B
 │   ├── tts.py               # B
+│   ├── telegram_notifier.py # B: отправка напоминаний
 │   └── embeddings.py        # A
-└── workers/                 # фоновые задачи, после ядра
+└── workers/                 # APScheduler напоминаний
 ```
 
 ## Правила
@@ -46,6 +50,17 @@ app/
 - Все даты — `timestamptz` (UTC), таймзона пользователя — в профиле.
 - `user_id` берётся из auth-контекста, никогда из аргументов LLM.
 - Все tool-аргументы проходят Pydantic-валидацию.
+- Backend не импортирует aiogram: Telegram-бот общается с ним по HTTP.
+- Напоминания: APScheduler в backend, отправка через `TelegramNotifier`.
+
+## Клиенты
+
+| Клиент | Как работает |
+|---|---|
+| Telegram-бот | `telegram_bot/` → `/chat`, `/voice` с `X-Telegram-Id` и `X-Bot-Secret` |
+| Web (этап 2) | React → тот же API с `X-Demo-User: demo` |
+
+Бот не дублирует бизнес-логику: только Telegram UI и вызовы API.
 
 ## Ключевые интерфейсы
 
