@@ -9,6 +9,8 @@ from aiogram.types import CallbackQuery
 from app.api_client import ApiClient, BackendError
 from app.handlers.text import send_chat_result
 from app.identity import username_from_user
+from app.keyboards import with_main_menu
+from app.messaging import clear_markup
 
 logger = logging.getLogger(__name__)
 router = Router(name="clarification")
@@ -33,8 +35,17 @@ async def on_clarification(
         return
 
     data = await state.get_data()
+    # An old message can still carry buttons from a previous question. Its
+    # id must match the current question, otherwise the index would pick an
+    # option that belongs to a different clarification.
+    if str(data.get("clarification_id") or "") != clarification_id:
+        await callback.answer("Кнопка устарела. Напиши ответ текстом.", show_alert=True)
+        if callback.message:
+            await clear_markup(callback.message)
+        return
+
     options = data.get("clarification_options") or []
-    if index >= len(options):
+    if index < 0 or index >= len(options):
         await callback.answer("Кнопка устарела. Напиши ответ текстом.", show_alert=True)
         return
 
@@ -54,8 +65,12 @@ async def on_clarification(
     except BackendError as exc:
         logger.warning("clarification failed: %s", exc.code)
         if callback.message:
-            await callback.message.answer(exc.user_message)
+            await callback.message.answer(
+                exc.user_message,
+                reply_markup=with_main_menu(),
+            )
         return
 
     if callback.message:
+        await clear_markup(callback.message)
         await send_chat_result(callback.message, state, result)

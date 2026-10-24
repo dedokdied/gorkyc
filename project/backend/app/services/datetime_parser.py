@@ -221,18 +221,31 @@ def _parse_duration(text: str) -> int | None:
 
 
 def _is_time_phrase(text: str) -> bool:
+    text = _replace_word_numbers(_normalize(text))
     return bool(
-        re.search(r"\bв\s+\d{1,2}(\s*час(?:а|ов)?)?(\s+\d{1,2}\s*минут(?:ы)?)?\b", text)
+        re.search(
+            r"\bв\s+(?:\d{1,2}|час)(\s*час(?:а|ов)?)?"
+            r"(\s+\d{1,2}\s*минут(?:ы)?)?\b",
+            text,
+        )
         or re.search(r"\b\d{1,2}[:.]\d{2}\b", text)
     )
 
 
 def _parse_time(text: str) -> dtime | None:
-    text = _normalize(text)
+    text = _replace_word_numbers(_normalize(text))
     if "полдень" in text:
         return dtime(12, 0)
     if "полночь" in text:
         return dtime(0, 0)
+
+    # «в час», «в час дня», «в час ночи» — час без числа.
+    match = re.search(r"\bв\s+час\b(?:\s+(утра|дня|вечера|ночи))?", text)
+    if match:
+        suffix = match.group(1)
+        if suffix in {"утра", "ночи"}:
+            return dtime(1, 0)
+        return dtime(13, 0)
 
     # 10:30 / 10.30 (но не 23.10.2026)
     match = re.search(r"(?<!\d)(\d{1,2})[:.](\d{2})(?!\d)(?!\.\d)", text)

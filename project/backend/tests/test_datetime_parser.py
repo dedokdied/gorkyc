@@ -21,6 +21,27 @@ def test_tomorrow_with_explicit_time(parser):
     assert parsed.is_ambiguous is False
 
 
+def test_tomorrow_at_one_oclock(parser):
+    parsed = parser.parse("завтра в час", TZ, NOW)
+    assert parsed.starts_at == datetime(2026, 10, 23, 13, 0, tzinfo=ZoneInfo(TZ))
+    assert parsed.due_at == parsed.starts_at
+    assert parsed.duration_minutes is None
+    assert parsed.is_ambiguous is False
+
+
+def test_one_oclock_with_part_of_day(parser):
+    day = parser.parse("завтра в час дня", TZ, NOW)
+    assert day.starts_at == datetime(2026, 10, 23, 13, 0, tzinfo=ZoneInfo(TZ))
+
+    night = parser.parse("в час ночи", TZ, NOW)
+    assert night.time.isoformat() == "01:00:00"
+
+
+def test_word_number_hours(parser):
+    parsed = parser.parse("завтра в два часа", TZ, NOW)
+    assert parsed.starts_at == datetime(2026, 10, 23, 2, 0, tzinfo=ZoneInfo(TZ))
+
+
 def test_today_and_tomorrow_are_day_ranges(parser):
     today = parser.parse("сегодня", TZ, NOW)
     assert today.starts_at == datetime(2026, 10, 22, 0, 0, tzinfo=ZoneInfo(TZ))

@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user_id
 from app.db import get_db
-from app.schemas.events import EventCreate, EventPatch, EventRead, EventType
+from app.schemas.events import (
+    EventCreate,
+    EventPatch,
+    EventRead,
+    EventStatus,
+    EventType,
+)
 from app.services.events import EventService
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -21,10 +27,17 @@ async def list_events(
     from_: AwareDatetime | None = Query(default=None, alias="from"),
     to: AwareDatetime | None = Query(default=None),
     type: EventType | None = Query(default=None),
+    status: EventStatus | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
 ):
-    return await _svc(db).list(user_id, start=from_, end=to, type=type)
+    return await _svc(db).list(
+        user_id,
+        start=from_,
+        end=to,
+        type=type,
+        status=status,
+    )
 
 
 @router.post("", response_model=EventRead, status_code=201)

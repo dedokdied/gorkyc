@@ -36,6 +36,7 @@ class FailingSTT:
 class FakeAssistant:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str | None, str]] = []
+        self.clarifications: list[tuple[str, str, str | None]] = []
 
     async def handle(
         self,
@@ -49,6 +50,23 @@ class FakeAssistant:
         return ChatResponse(
             session_id="session-1",
             reply="Создал напоминание.",
+            action=ActionInfo(name="create_event", entity_id="event-1"),
+        )
+
+    async def answer_clarification(
+        self,
+        user_id: str,
+        clarification_id: str,
+        text: str,
+        *,
+        session_id: str | None = None,
+        timezone: str = "Europe/Moscow",
+    ) -> ChatResponse:
+        del timezone
+        self.clarifications.append((clarification_id, text, session_id))
+        return ChatResponse(
+            session_id="session-1",
+            reply="Готово: Встреча.",
             action=ActionInfo(name="create_event", entity_id="event-1"),
         )
 
@@ -75,6 +93,28 @@ async def test_voice_transcribes_and_passes_text_to_assistant() -> None:
     assert result.reply == "Создал напоминание."
     assert result.action is not None
     assert result.action.entity_id == "event-1"
+
+
+@pytest.mark.asyncio
+async def test_voice_answer_is_routed_to_pending_clarification() -> None:
+    assistant = FakeAssistant()
+    service = VoiceService(  # type: ignore[arg-type]
+        stt=FakeSTT(text="в час"),
+        assistant=assistant,
+    )
+
+    result = await service.handle(
+        "user-1",
+        b"ogg-bytes",
+        "voice.ogg",
+        "audio/ogg",
+        session_id="session-0",
+        clarification_id="pending-1",
+    )
+
+    assert assistant.calls == []
+    assert assistant.clarifications == [("pending-1", "в час", "session-0")]
+    assert result.reply == "Готово: Встреча."
 
 
 @pytest.mark.asyncio

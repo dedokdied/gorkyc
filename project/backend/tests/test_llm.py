@@ -6,6 +6,7 @@ import pytest
 from app.core.config import Settings
 from app.integrations.llm import (
     FallbackLLM,
+    LLMTurn,
     OpenAICompatibleLLM,
     RuleBasedLLM,
     build_llm_from_env,
@@ -62,3 +63,71 @@ async def test_api_llm_sends_bearer_token() -> None:
     assert turn.content == "готово"
     assert captured["auth"] == "Bearer secret"
     assert str(captured["url"]).endswith("/chat/completions")
+
+
+class _RefusingLLM:
+    async def complete(self, messages, tools):
+        del messages, tools
+        return LLMTurn(
+            content="Я не могу создавать заметки с оскорбительным содержанием."
+        )
+
+
+@pytest.mark.asyncio
+async def test_refusal_falls_back_to_rule_based_create() -> None:
+    llm = FallbackLLM(primary=_RefusingLLM(), fallback=RuleBasedLLM())
+
+    turn = await llm.complete(
+        [{"role": "user", "content": "сделай заметку бульба завтра в час"}],
+        [],
+    )
+
+    assert len(turn.tool_calls) == 1
+    call = turn.tool_calls[0]
+    assert call.name == "create_event"
+    assert call.arguments["type"] == "task"
+    assert call.arguments["title"] == "бульба завтра в час"
+
+
+@pytest.mark.asyncio
+async def test_rule_based_llm_recognizes_note() -> None:
+    turn = await RuleBasedLLM().complete(
+        [{"role": "user", "content": "сделай заметку бульба"}],
+        [],
+    )
+
+    assert turn.tool_calls[0].arguments["title"] == "бульба"
+
+
+@pytest.mark.asyncio
+async def test_rule_based_llm_lists_notes_instead_of_creating() -> None:
+    turn = await RuleBasedLLM().complete(
+        [{"role": "user", "content": "покажи заметки"}],
+        [],
+    )
+
+    call = turn.tool_calls[0]
+    assert call.name == "list_events"
+    assert call.arguments["period"] == "all"
+
+
+@pytest.mark.asyncio
+async def test_rule_based_llm_lists_meetings_instead_of_creating() -> None:
+    turn = await RuleBasedLLM().complete(
+        [{"role": "user", "content": "покажи встречи"}],
+        [],
+    )
+
+    assert turn.tool_calls[0].name == "list_events"
+
+
+@pytest.mark.asyncio
+async def test_rule_based_llm_strips_search_command() -> None:
+    turn = await RuleBasedLLM().complete(
+        [{"role": "user", "content": "найди договор"}],
+        [],
+    )
+
+    call = turn.tool_calls[0]
+    assert call.name == "search_events"
+    assert call.arguments["query"] == "договор"

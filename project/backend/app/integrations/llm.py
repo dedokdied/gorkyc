@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import uuid4
@@ -153,6 +154,11 @@ class OllamaLLM(OpenAICompatibleLLM):
 
 
 class FallbackLLM:
+    _REFUSAL = re.compile(
+        r"не могу (?:создавать|записать|помочь)|оскорбительн|неэтичн",
+        re.IGNORECASE,
+    )
+
     def __init__(self, *, primary: LLMClient, fallback: LLMClient) -> None:
         self._primary = primary
         self._fallback = fallback
@@ -163,9 +169,14 @@ class FallbackLLM:
         tools: list[dict[str, Any]],
     ) -> LLMTurn:
         try:
-            return await self._primary.complete(messages, tools)
+            turn = await self._primary.complete(messages, tools)
         except LLMError:
             return await self._fallback.complete(messages, tools)
+        # Some providers refuse to store rude words in a personal note.
+        # The user's own note text is not a safety issue for this assistant.
+        if not turn.tool_calls and turn.content and self._REFUSAL.search(turn.content):
+            return await self._fallback.complete(messages, tools)
+        return turn
 
 
 class RuleBasedLLM:
@@ -181,12 +192,40 @@ class RuleBasedLLM:
         text = self._last_user_text(messages)
         lowered = text.lower()
 
+        # Read-only commands must win over creation words: «покажи заметки»
+        # contains «заметк», but it is a list request, not a new note.
+        if any(word in lowered for word in ("что у меня", "покажи", "список", "какие")):
+            if "завтра" in lowered:
+                period = "tomorrow"
+            elif "недел" in lowered:
+                period = "week"
+            elif "сегодня" in lowered:
+                period = "today"
+            elif any(word in lowered for word in ("заметк", "задач", "все", "всё")):
+                period = "all"
+            else:
+                period = "today"
+            return self._call("list_events", {"period": period, "limit": 20})
+        if "найди" in lowered or "поищи" in lowered or "поиск" in lowered:
+            return self._call(
+                "search_events",
+                {"query": self._search_query(text), "limit": 5},
+            )
         if "напомни" in lowered or "напоминание" in lowered:
             return self._call(
                 "create_event",
                 {
                     "type": "reminder",
                     "title": text,
+                    "time_expression": text,
+                },
+            )
+        if "заметк" in lowered or "задач" in lowered:
+            return self._call(
+                "create_event",
+                {
+                    "type": "task",
+                    "title": self._note_title(text),
                     "time_expression": text,
                 },
             )
@@ -199,21 +238,32 @@ class RuleBasedLLM:
                     "time_expression": text,
                 },
             )
-        if any(word in lowered for word in ("что у меня", "покажи", "список")):
-            if "завтра" in lowered:
-                period = "tomorrow"
-            elif "недел" in lowered:
-                period = "week"
-            else:
-                period = "today"
-            return self._call("list_events", {"period": period, "limit": 20})
-        if "найди" in lowered or "поиск" in lowered:
-            return self._call("search_events", {"query": text, "limit": 5})
         if "привет" in lowered:
             return LLMTurn(content="Привет! Напиши, что нужно сделать.")
         return LLMTurn(
             content="Пока не понял. Скажи, что создать, показать или найти."
         )
+
+    @staticmethod
+    def _search_query(text: str) -> str:
+        query = re.sub(
+            r"^\s*(?:найди|поищи|поиск)\s+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+        return query or text
+
+    @staticmethod
+    def _note_title(text: str) -> str:
+        title = re.sub(
+            r"^\s*(?:сделай|создай|запиши|добавь)\s+"
+            r"(?:заметку|заметка|задачу|задача)\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+        return title or text
 
     @staticmethod
     def _last_user_text(messages: list[dict[str, Any]]) -> str:

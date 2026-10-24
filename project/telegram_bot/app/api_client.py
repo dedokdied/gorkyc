@@ -116,6 +116,7 @@ class ApiClient:
         session_id: str | None = None,
         timezone: str | None = None,
         telegram_username: str | None = None,
+        clarification_id: str | None = None,
     ) -> VoiceResult:
         if self._settings.bot_mock_mode:
             return self._mock_voice(telegram_id)
@@ -123,6 +124,8 @@ class ApiClient:
         form = {"timezone": timezone or self._settings.app_tz}
         if session_id:
             form["session_id"] = session_id
+        if clarification_id:
+            form["clarification_id"] = clarification_id
         data = await self._request(
             "POST",
             "/voice",
@@ -270,7 +273,11 @@ class ApiClient:
 
     @staticmethod
     def _parse_chat(data: Any) -> ChatResult:
-        if not isinstance(data, dict) or not isinstance(data.get("reply"), str):
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("reply"), str)
+            or not data["reply"].strip()
+        ):
             raise BackendError(
                 "Backend вернул ответ без текста.",
                 code="invalid_response",
@@ -293,7 +300,12 @@ class ApiClient:
             )
         transcript = data.get("transcript")
         reply = data.get("reply")
-        if not isinstance(transcript, str) or not isinstance(reply, str):
+        if (
+            not isinstance(transcript, str)
+            or not transcript.strip()
+            or not isinstance(reply, str)
+            or not reply.strip()
+        ):
             raise BackendError(
                 "Backend вернул ответ без расшифровки.",
                 code="invalid_response",

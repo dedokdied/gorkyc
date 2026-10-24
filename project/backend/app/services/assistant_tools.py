@@ -237,6 +237,7 @@ class DbToolExecutor:
                     _as_uuid(user_id),
                     start=start,
                     end=end,
+                    status="planned",
                 )
             except DomainValidationError as exc:
                 return [_error(str(exc))]

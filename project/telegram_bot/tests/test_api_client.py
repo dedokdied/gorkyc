@@ -181,6 +181,43 @@ async def test_voice_sends_multipart_and_parses_transcript() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_passes_clarification_id() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content
+        return httpx.Response(
+            200,
+            json={
+                "session_id": "session-1",
+                "transcript": "в час",
+                "reply": "Готово: Встреча.",
+                "action": {"name": "create_event", "status": "done"},
+                "clarification": None,
+                "audio_url": None,
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://test/api/v1",
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        api = ApiClient(make_settings(), http_client)
+        await api.voice(
+            42,
+            b"ogg-bytes",
+            "voice.ogg",
+            "audio/ogg",
+            clarification_id="pending-1",
+        )
+
+    body = captured["body"]
+    assert isinstance(body, bytes)
+    assert b'name="clarification_id"' in body
+    assert b"pending-1" in body
+
+
+@pytest.mark.asyncio
 async def test_search_unwraps_event_hits() -> None:
     captured: dict[str, object] = {}
 

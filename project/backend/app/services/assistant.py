@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import uuid4
@@ -22,11 +23,20 @@ from app.schemas.tools import (
     SearchEventsArgs,
     UpdateEventArgs,
 )
+from app.services.datetime_parser import DatetimeParser
 from app.services.dialogue import (
     ConversationStore,
     InMemoryConversationStore,
     PendingAction,
     PendingActionStore,
+)
+
+_NEW_REQUEST = re.compile(
+    r"\b(?:создай|сделай|запиши|добавь|запланируй|поставь)\b"
+    r".*\b(?:заметк|задач|встреч|напомин)"
+    r"|\b(?:покажи|найди|удали|отметь|перенеси|измени|список)\b"
+    r"|\bчто у меня\b|\bкакие у меня\b",
+    re.IGNORECASE,
 )
 
 
@@ -96,7 +106,7 @@ class Assistant:
         tools: ToolExecutor,
         pending: PendingActionStore,
         history: ConversationStore | None = None,
-        max_tool_rounds: int = 2,
+        max_tool_rounds: int = 4,
     ) -> None:
         self._llm = llm
         self._tools = tools
@@ -202,7 +212,15 @@ class Assistant:
         timezone: str = "Europe/Moscow",
     ) -> ChatResponse:
         pending = await self._pending.pop(clarification_id)
-        if pending is None or pending.user_id != user_id:
+        if pending is None:
+            return ChatResponse(
+                session_id=session_id or str(uuid4()),
+                reply="Это уточнение уже неактуально. Напиши запрос заново.",
+            )
+        if pending.user_id != user_id:
+            # Another account must not be able to consume someone else's
+            # question just by guessing its id.
+            await self._pending.save(pending)
             return ChatResponse(
                 session_id=session_id or str(uuid4()),
                 reply="Это уточнение уже неактуально. Напиши запрос заново.",
@@ -218,7 +236,18 @@ class Assistant:
                 timezone=timezone,
             )
 
-        args = self._merge_answer(pending, text)
+        # A complete new command supersedes the pending question. Without
+        # this, «покажи планы» or a repeated «сделай заметку …» would be
+        # glued to the old time expression and the bot would ask again.
+        if self._looks_like_new_request(text):
+            return await self.handle(
+                user_id,
+                text,
+                session_id=pending.session_id,
+                timezone=timezone,
+            )
+
+        args = self._merge_answer(pending, text, timezone)
         call = ToolCall(
             id=f"call-{uuid4()}",
             name=pending.intent,
@@ -269,7 +298,21 @@ class Assistant:
         return response
 
     @staticmethod
-    def _merge_answer(pending: PendingAction, text: str) -> dict[str, Any]:
+    def _looks_like_new_request(text: str) -> bool:
+        """True when the message is a new command, not an answer.
+
+        Conservative on purpose: only imperative create/list/search verbs
+        count. A bare «завтра в час» or «бульба» must stay an answer to the
+        pending question.
+        """
+        return bool(_NEW_REQUEST.search(text))
+
+    @staticmethod
+    def _merge_answer(
+        pending: PendingAction,
+        text: str,
+        timezone: str = "Europe/Moscow",
+    ) -> dict[str, Any]:
         """Put a free-form answer into the field the server asked about."""
         args = dict(pending.args)
         missing = set(pending.missing)
@@ -278,8 +321,11 @@ class Assistant:
             args["title"] = text
             return args
         if missing & {"starts_at", "due_at", "time_expression", "ends_at"}:
-            original = str(args.get("time_expression") or "").strip()
-            args["time_expression"] = f"{original} {text}".strip()
+            args["time_expression"] = Assistant._merge_time_expression(
+                args.get("time_expression"),
+                text,
+                timezone,
+            )
             return args
         if missing & {"duration_minutes", "duration_expression"}:
             args["duration_expression"] = text
@@ -289,9 +335,58 @@ class Assistant:
             return args
 
         # Older pending actions did not always declare missing fields.
-        original = str(args.get("time_expression") or "").strip()
-        args["time_expression"] = f"{original} {text}".strip()
+        args["time_expression"] = Assistant._merge_time_expression(
+            args.get("time_expression"),
+            text,
+            timezone,
+        )
         return args
+
+    @staticmethod
+    def _merge_time_expression(
+        original: Any,
+        answer: str,
+        timezone: str,
+    ) -> str:
+        """Combine the previously known time with the user's answer.
+
+        A complete date and time in the answer replaces the old expression.
+        A time-only answer keeps the date from the previous expression and
+        vice versa. This prevents «завтра» + «в 15:00» loops and stops old
+        times from winning over a corrected one.
+        """
+        original_text = str(original or "").strip()
+        answer = answer.strip()
+        if not original_text:
+            return answer
+        if not answer:
+            return original_text
+
+        parser = DatetimeParser()
+        parsed_answer = parser.parse(answer, timezone)
+        if parsed_answer.starts_at is not None and not parsed_answer.is_ambiguous:
+            return answer
+
+        parsed_original = parser.parse(original_text, timezone)
+        target_date = parsed_answer.date or parsed_original.date
+        target_time = parsed_answer.time or parsed_original.time
+        if target_date is not None and target_time is not None:
+            try:
+                zone = ZoneInfo(timezone)
+            except (KeyError, ValueError):
+                zone = ZoneInfo("Europe/Moscow")
+            combined = datetime.combine(
+                target_date.date(),
+                target_time,
+                tzinfo=zone,
+            )
+            return combined.isoformat()
+
+        if parsed_answer.date is not None:
+            return answer
+        if answer not in original_text:
+            return f"{original_text} {answer}".strip()
+        return original_text
 
     async def _remember(
         self,
@@ -413,7 +508,8 @@ class Assistant:
             "выражение времени в time_expression. Не придумывай event_id. "
             "Если не хватает обязательных полей, используй ask_clarification. "
             "Для создания события вызывай create_event с уже известными "
-            "полями: недостающие поля сервер уточнит сам. Никогда не "
+            "полями: недостающие поля сервер уточнит сам. Сохраняй текст "
+            "заметки как есть и не отказывайся из-за грубых слов. Никогда не "
             "предлагай нажимать кнопки и не упоминай кнопки или интерфейс: "
             "все вопросы задавай обычным текстом. Отвечай кратко, по-русски. "
             f"Сейчас: {now}, таймзона: {timezone}."

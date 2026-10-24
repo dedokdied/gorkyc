@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -13,7 +14,7 @@ from app.schemas.tools import (
     UpdateEventArgs,
 )
 from app.services.assistant import Assistant, ClarificationNeeded
-from app.services.dialogue import InMemoryPendingActionStore
+from app.services.dialogue import InMemoryPendingActionStore, PendingAction
 
 
 class FakeTools:
@@ -196,7 +197,8 @@ async def test_assistant_returns_clarification_and_continues_it() -> None:
 
     assert updated.reply == "Готово: Встреча с Иваном."
     assert updated.clarification is None
-    assert tools.events[0]["starts_at"] == "завтра 15:00"
+    started = datetime.fromisoformat(tools.events[0]["starts_at"])
+    assert (started.hour, started.minute) == (15, 0)
 
 
 @pytest.mark.asyncio
@@ -365,6 +367,193 @@ def test_system_prompt_forbids_button_hints() -> None:
     prompt = Assistant._system_prompt("Europe/Moscow").lower()
 
     assert "не предлагай нажимать кнопки" in prompt
+
+
+def _pending_with_time(expression: str | None) -> PendingAction:
+    return PendingAction(
+        id="pending-1",
+        user_id="user-1",
+        session_id="session-1",
+        intent="create_event",
+        args={
+            "type": "reminder",
+            "title": "бульба",
+            "time_expression": expression,
+        },
+        question="Когда напомнить?",
+        missing=["due_at"],
+    )
+
+
+def test_merge_answer_keeps_full_answer_with_date_and_time() -> None:
+    pending = _pending_with_time("завтра")
+
+    merged = Assistant._merge_answer(
+        pending,
+        "послезавтра в 16:00",
+        "Europe/Moscow",
+    )
+
+    assert merged["time_expression"] == "послезавтра в 16:00"
+
+
+def test_merge_answer_replaces_old_time_with_new_one() -> None:
+    pending = _pending_with_time("завтра в 15:00")
+
+    merged = Assistant._merge_answer(pending, "в 16:00", "Europe/Moscow")
+
+    parsed = datetime.fromisoformat(merged["time_expression"])
+    assert (parsed.hour, parsed.minute) == (16, 0)
+
+
+def test_merge_answer_accepts_tomorrow_at_one() -> None:
+    pending = _pending_with_time(None)
+
+    merged = Assistant._merge_answer(pending, "завтра в час", "Europe/Moscow")
+
+    assert merged["time_expression"] == "завтра в час"
+
+
+@pytest.mark.asyncio
+async def test_new_request_supersedes_pending_clarification() -> None:
+    tools = FakeTools(require_time=True)
+    store = InMemoryPendingActionStore()
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(
+                type="meeting",
+                title="Встреча с Иваном",
+                time_expression="завтра",
+            ),
+            LLMTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call-2",
+                        name="list_events",
+                        arguments={"period": "today", "limit": 20},
+                    )
+                ]
+            ),
+            LLMTurn(content="Вот планы на сегодня."),
+        ),
+        tools=tools,
+        pending=store,
+    )
+
+    first = await assistant.handle("user-1", "Поставь встречу с Иваном завтра")
+    assert first.clarification is not None
+
+    second = await assistant.answer_clarification(
+        "user-1",
+        first.clarification.id,
+        "покажи планы на сегодня",
+    )
+
+    assert second.reply == "Вот планы на сегодня."
+    assert second.action is not None
+    assert second.action.name == "list_events"
+    assert await store.get(first.clarification.id) is None
+
+
+@pytest.mark.asyncio
+async def test_list_phrase_supersedes_pending_clarification() -> None:
+    tools = FakeTools(require_time=True)
+    store = InMemoryPendingActionStore()
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(
+                type="meeting",
+                title="Встреча с Иваном",
+                time_expression="завтра",
+            ),
+            LLMTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call-2",
+                        name="list_events",
+                        arguments={"period": "today", "limit": 20},
+                    )
+                ]
+            ),
+            LLMTurn(content="Вот планы на сегодня."),
+        ),
+        tools=tools,
+        pending=store,
+    )
+
+    first = await assistant.handle("user-1", "Поставь встречу с Иваном завтра")
+    assert first.clarification is not None
+
+    second = await assistant.answer_clarification(
+        "user-1",
+        first.clarification.id,
+        "что у меня сегодня",
+    )
+
+    assert second.reply == "Вот планы на сегодня."
+    assert second.action is not None
+    assert second.action.name == "list_events"
+
+
+@pytest.mark.asyncio
+async def test_foreign_user_cannot_consume_clarification() -> None:
+    store = InMemoryPendingActionStore()
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(
+                type="meeting",
+                title="Встреча с Иваном",
+                time_expression="завтра",
+            ),
+        ),
+        tools=FakeTools(require_time=True),
+        pending=store,
+    )
+
+    first = await assistant.handle("user-1", "Поставь встречу с Иваном завтра")
+    assert first.clarification is not None
+
+    foreign = await assistant.answer_clarification(
+        "user-2",
+        first.clarification.id,
+        "15:00",
+    )
+
+    assert "неактуально" in foreign.reply
+    assert await store.get(first.clarification.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_three_tool_rounds_still_return_final_answer() -> None:
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            LLMTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call-1",
+                        name="list_events",
+                        arguments={"period": "today", "limit": 20},
+                    )
+                ]
+            ),
+            LLMTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call-2",
+                        name="list_events",
+                        arguments={"period": "week", "limit": 20},
+                    )
+                ]
+            ),
+            LLMTurn(content="Вот все планы."),
+        ),
+        tools=FakeTools(),
+        pending=InMemoryPendingActionStore(),
+    )
+
+    response = await assistant.handle("user-1", "Покажи все планы")
+
+    assert response.reply == "Вот все планы."
 
 
 @pytest.mark.asyncio

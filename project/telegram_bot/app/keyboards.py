@@ -39,6 +39,20 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def with_main_menu(
+    markup: InlineKeyboardMarkup | None = None,
+) -> InlineKeyboardMarkup:
+    """Attach the main menu to any bot message.
+
+    Inline keyboards live on a single message, so every new answer carries
+    the menu again. Without this the buttons disappear as soon as the
+    previous message is edited or pushed out of view.
+    """
+    rows = [list(row) for row in markup.inline_keyboard] if markup else []
+    rows.extend(main_menu_keyboard().inline_keyboard)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def plans_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

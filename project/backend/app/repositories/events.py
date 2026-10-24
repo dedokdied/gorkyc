@@ -25,7 +25,9 @@ def _period_condition(start: Any | None, end: Any | None):
     if start is not None:
         conditions.append(effective_end >= start)
     if end is not None:
-        conditions.append(effective_start <= end)
+        # Half-open period: an event at exactly 00:00 of the next day
+        # belongs to the next day, not to the current one.
+        conditions.append(effective_start < end)
     return and_(*conditions)
 
 
@@ -80,10 +82,13 @@ class EventRepository:
         start: Any | None = None,
         end: Any | None = None,
         event_type: EventType | None = None,
+        status: EventStatus | None = None,
     ) -> list[Event]:
         stmt = select(Event).where(Event.user_id == user_id)
         if event_type is not None:
             stmt = stmt.where(Event.type == event_type)
+        if status is not None:
+            stmt = stmt.where(Event.status == status)
         period_filter = _period_condition(start, end)
         if period_filter is not None:
             stmt = stmt.where(period_filter)

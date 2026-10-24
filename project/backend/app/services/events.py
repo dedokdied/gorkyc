@@ -320,6 +320,7 @@ class EventService:
         end: Any = None,
         from_: Any = None,
         to: Any = None,
+        status: Any = None,
     ) -> list[EventRead]:
         user_id = _uid(user_id)
 
@@ -348,5 +349,16 @@ class EventService:
             value = type.value if hasattr(type, "value") else str(type)
             event_type = ModelEventType(value)
 
-        events = await self.repo.list_events(user_id, start, end, event_type)
+        event_status = None
+        if status is not None:
+            value = status.value if hasattr(status, "value") else str(status)
+            event_status = ModelEventStatus(value)
+
+        events = await self.repo.list_events(
+            user_id,
+            start,
+            end,
+            event_type,
+            event_status,
+        )
         return [event_to_read(event) for event in events]

@@ -35,6 +35,7 @@ def build_voice_router(
         x_demo_user: Annotated[str | None, Header(alias="X-Demo-User")] = None,
         session_id: Annotated[str | None, Form()] = None,
         timezone: Annotated[str, Form()] = "Europe/Moscow",
+        clarification_id: Annotated[str | None, Form()] = None,
     ) -> VoiceResponse | JSONResponse:
         user_id = await resolve_user(
             x_telegram_id,
@@ -58,6 +59,7 @@ def build_voice_router(
                 file.content_type or "audio/ogg",
                 session_id=session_id or None,
                 timezone=timezone,
+                clarification_id=clarification_id or None,
             )
         except VoiceError as exc:
             return _error(400, exc.code, exc.user_message)

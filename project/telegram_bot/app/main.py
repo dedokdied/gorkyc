@@ -5,6 +5,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from app.api_client import ApiClient
 from app.config import get_settings
@@ -41,6 +42,18 @@ async def main() -> None:
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
+        await bot.set_my_commands(
+            [
+                BotCommand(command="start", description="Начать"),
+                BotCommand(command="menu", description="Главное меню"),
+                BotCommand(command="today", description="Планы на сегодня"),
+                BotCommand(command="tomorrow", description="Планы на завтра"),
+                BotCommand(command="week", description="Планы на неделю"),
+                BotCommand(command="search", description="Поиск по записям"),
+                BotCommand(command="cancel", description="Отменить уточнение"),
+                BotCommand(command="help", description="Что я умею"),
+            ]
+        )
         await dispatcher.start_polling(
             bot,
             allowed_updates=dispatcher.resolve_used_update_types(),

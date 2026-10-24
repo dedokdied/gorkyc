@@ -38,6 +38,7 @@ class VoiceService:
         *,
         session_id: str | None = None,
         timezone: str = "Europe/Moscow",
+        clarification_id: str | None = None,
     ) -> VoiceResult:
         try:
             transcript = await self._stt.transcribe(audio, filename, content_type)
@@ -54,12 +55,21 @@ class VoiceService:
                 code="stt_empty",
             )
 
-        response = await self._assistant.handle(
-            user_id,
-            transcript,
-            session_id=session_id,
-            timezone=timezone,
-        )
+        if clarification_id:
+            response = await self._assistant.answer_clarification(
+                user_id,
+                clarification_id,
+                transcript,
+                session_id=session_id,
+                timezone=timezone,
+            )
+        else:
+            response = await self._assistant.handle(
+                user_id,
+                transcript,
+                session_id=session_id,
+                timezone=timezone,
+            )
         return VoiceResult(
             session_id=response.session_id,
             transcript=transcript,
