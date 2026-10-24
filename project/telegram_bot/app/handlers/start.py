@@ -1,28 +1,33 @@
 from aiogram import Router
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+
+from app.keyboards import main_menu_keyboard, welcome_keyboard
+from app.onboarding import CAPABILITIES, WELCOME
 
 router = Router(name="start")
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    if data.get("onboarding_seen"):
+        await message.answer(
+            CAPABILITIES,
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
     await message.answer(
-        "Привет! Я ассистент задач и встреч.\n\n"
-        "Напиши, что нужно сделать, например:\n"
-        "«Напомни завтра в 10 позвонить Ивану»\n\n"
-        "Посмотреть планы: /today, /tomorrow, /week.\n"
-        "Пока я работаю с текстом. Голосовые сообщения подключим позже."
+        WELCOME,
+        reply_markup=welcome_keyboard(),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(
-        "Что я умею:\n"
-        "— создавать задачи, встречи и напоминания;\n"
-        "— уточнять дату и время;\n"
-        "— показывать список на день: /today, /tomorrow, /week;\n"
-        "— искать по старым записям.\n\n"
-        "Просто напиши фразу обычным языком."
+        CAPABILITIES,
+        reply_markup=main_menu_keyboard(),
     )

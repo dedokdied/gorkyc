@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from app.core.config import Settings
 from app.integrations.llm import (
     FallbackLLM,
     OpenAICompatibleLLM,
@@ -11,20 +12,26 @@ from app.integrations.llm import (
 )
 
 
-def test_llm_defaults_to_rule_based_without_api_key(monkeypatch) -> None:
-    monkeypatch.delenv("LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
+def test_llm_defaults_to_rule_based_without_api_key() -> None:
+    config = Settings(
+        _env_file=None,
+        llm_provider="api",
+        llm_api_key=None,
+    )
 
-    llm = build_llm_from_env()
+    llm = build_llm_from_env(config)
 
     assert isinstance(llm, RuleBasedLLM)
 
 
-def test_llm_api_provider_with_key_uses_fallback(monkeypatch) -> None:
-    monkeypatch.setenv("LLM_PROVIDER", "api")
-    monkeypatch.setenv("LLM_API_KEY", "test-key")
+def test_llm_api_provider_with_key_uses_fallback() -> None:
+    config = Settings(
+        _env_file=None,
+        llm_provider="api",
+        llm_api_key="test-key",
+    )
 
-    llm = build_llm_from_env()
+    llm = build_llm_from_env(config)
 
     assert isinstance(llm, FallbackLLM)
 

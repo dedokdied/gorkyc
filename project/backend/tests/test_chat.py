@@ -112,6 +112,21 @@ class FailingLLM:
         raise LLMError("ollama is down")
 
 
+class RecordingLLM:
+    def __init__(self, *turns: LLMTurn) -> None:
+        self._turns = list(turns)
+        self.seen: list[list[dict[str, Any]]] = []
+
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMTurn:
+        del tools
+        self.seen.append([dict(message) for message in messages])
+        return self._turns.pop(0)
+
+
 def create_call(**arguments: Any) -> LLMTurn:
     return LLMTurn(
         tool_calls=[
@@ -185,6 +200,33 @@ async def test_assistant_returns_clarification_and_continues_it() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_event_without_title_asks_what_to_do() -> None:
+    tools = FakeTools()
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(type="task", time_expression="завтра"),
+        ),
+        tools=tools,
+        pending=InMemoryPendingActionStore(),
+    )
+
+    response = await assistant.handle("user-1", "Запланируй на завтра")
+
+    assert response.clarification is not None
+    assert response.clarification.question == "Что нужно сделать?"
+    assert response.clarification.missing == ["title"]
+
+    updated = await assistant.answer_clarification(
+        "user-1",
+        response.clarification.id,
+        "Подготовить отчёт",
+    )
+
+    assert updated.reply == "Готово: Подготовить отчёт."
+    assert tools.events[0]["title"] == "Подготовить отчёт"
+
+
+@pytest.mark.asyncio
 async def test_assistant_lists_events() -> None:
     tools = FakeTools()
     tools.events = [{"id": "event-1", "title": "Позвонить Ивану"}]
@@ -236,6 +278,93 @@ async def test_fallback_llm_uses_rule_based_when_local_model_is_down() -> None:
     )
 
     assert turn.tool_calls[0].name == "create_event"
+
+
+@pytest.mark.asyncio
+async def test_assistant_keeps_last_four_messages_in_context() -> None:
+    llm = RecordingLLM(
+        LLMTurn(content="Первый ответ."),
+        LLMTurn(content="Второй ответ."),
+        LLMTurn(content="Третий ответ."),
+    )
+    assistant = Assistant(
+        llm=llm,
+        tools=FakeTools(),
+        pending=InMemoryPendingActionStore(),
+    )
+
+    await assistant.handle("user-1", "Первое сообщение")
+    await assistant.handle("user-1", "Второе сообщение")
+    await assistant.handle("user-1", "Третье сообщение")
+
+    dialogue = [
+        message["content"]
+        for message in llm.seen[2]
+        if message["role"] in {"user", "assistant"}
+    ]
+    assert dialogue == [
+        "Первое сообщение",
+        "Первый ответ.",
+        "Второе сообщение",
+        "Второй ответ.",
+        "Третье сообщение",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_answer_to_ask_clarification_uses_dialogue_context() -> None:
+    tools = FakeTools()
+    llm = RecordingLLM(
+        LLMTurn(
+            tool_calls=[
+                ToolCall(
+                    id="call-1",
+                    name="ask_clarification",
+                    arguments={
+                        "question": "Во сколько поставить встречу?",
+                        "missing": ["starts_at"],
+                    },
+                )
+            ]
+        ),
+        create_call(
+            type="meeting",
+            title="Встреча с Иваном",
+            time_expression="завтра 15:00",
+        ),
+        LLMTurn(content="Создал встречу."),
+    )
+    assistant = Assistant(
+        llm=llm,
+        tools=tools,
+        pending=InMemoryPendingActionStore(),
+    )
+
+    first = await assistant.handle("user-1", "Поставь встречу с Иваном завтра")
+    assert first.clarification is not None
+    assert first.clarification.question == "Во сколько поставить встречу?"
+
+    second = await assistant.answer_clarification(
+        "user-1",
+        first.clarification.id,
+        "в 15:00",
+    )
+
+    assert second.reply == "Создал встречу."
+    assert tools.events[0]["title"] == "Встреча с Иваном"
+    dialogue = [
+        message["content"]
+        for message in llm.seen[1]
+        if message["role"] in {"user", "assistant"}
+    ]
+    assert "Во сколько поставить встречу?" in dialogue
+    assert "в 15:00" in dialogue
+
+
+def test_system_prompt_forbids_button_hints() -> None:
+    prompt = Assistant._system_prompt("Europe/Moscow").lower()
+
+    assert "не предлагай нажимать кнопки" in prompt
 
 
 @pytest.mark.asyncio

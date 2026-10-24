@@ -5,6 +5,73 @@ from typing import Any
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
+def welcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🚀 Начать",
+                    callback_data="onboarding:start",
+                ),
+                InlineKeyboardButton(
+                    text="💡 Примеры",
+                    callback_data="onboarding:examples",
+                ),
+            ],
+        ]
+    )
+
+
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Сделать задачу",
+                    callback_data="onboarding:create",
+                ),
+                InlineKeyboardButton(
+                    text="📅 Мои планы",
+                    callback_data="onboarding:plans",
+                ),
+            ],
+        ]
+    )
+
+
+def plans_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Сегодня", callback_data="period:today"),
+                InlineKeyboardButton(text="Завтра", callback_data="period:tomorrow"),
+            ],
+            [
+                InlineKeyboardButton(text="Неделя", callback_data="period:week"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data="onboarding:back",
+                ),
+            ],
+        ]
+    )
+
+
+def back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data="onboarding:back",
+                ),
+            ],
+        ]
+    )
+
+
 def clarification_keyboard(
     clarification: dict[str, Any] | None,
 ) -> InlineKeyboardMarkup | None:

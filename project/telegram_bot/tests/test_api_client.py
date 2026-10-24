@@ -41,11 +41,17 @@ async def test_chat_sends_telegram_headers_and_payload() -> None:
         transport=transport,
     ) as http_client:
         api = ApiClient(make_settings(), http_client)
-        result = await api.chat(42, "напомни завтра", session_id=None)
+        result = await api.chat(
+            42,
+            "напомни завтра",
+            session_id=None,
+            telegram_username="@ivan",
+        )
 
     assert captured["path"] == "/api/v1/chat"
     headers = captured["headers"]
     assert headers["x-telegram-id"] == "42"
+    assert headers["x-telegram-username"] == "@ivan"
     assert headers["x-bot-secret"] == "test-secret"
     assert captured["payload"] == {
         "session_id": None,

@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery
 
 from app.api_client import ApiClient, BackendError
 from app.handlers.text import send_chat_result
+from app.identity import username_from_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="clarification")
@@ -40,13 +41,15 @@ async def on_clarification(
     answer = str(options[index])
     await callback.answer()
 
-    telegram_id = callback.message.chat.id if callback.message else callback.from_user.id
+    telegram_id = callback.from_user.id
     try:
         result = await api.answer_clarification(
             telegram_id,
             clarification_id,
             answer,
             session_id=data.get("session_id"),
+            timezone=data.get("timezone"),
+            telegram_username=username_from_user(callback.from_user),
         )
     except BackendError as exc:
         logger.warning("clarification failed: %s", exc.code)

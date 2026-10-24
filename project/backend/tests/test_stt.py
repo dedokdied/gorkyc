@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from app.core.config import Settings
 from app.integrations.stt import (
     FasterWhisperSTT,
     OpenAIWhisperSTT,
@@ -12,36 +13,48 @@ from app.integrations.stt import (
 )
 
 
-def test_stt_defaults_to_api_when_key_is_set(monkeypatch) -> None:
-    monkeypatch.delenv("STT_PROVIDER", raising=False)
-    monkeypatch.setenv("STT_API_KEY", "test-key")
+def test_stt_defaults_to_api_when_key_is_set() -> None:
+    config = Settings(
+        _env_file=None,
+        stt_provider="api",
+        stt_api_key="test-key",
+    )
 
-    stt = build_stt_from_env()
+    stt = build_stt_from_env(config)
 
     assert isinstance(stt, OpenAIWhisperSTT)
 
 
-def test_stt_is_unavailable_without_api_key(monkeypatch) -> None:
-    monkeypatch.delenv("STT_PROVIDER", raising=False)
-    monkeypatch.delenv("STT_API_KEY", raising=False)
+def test_stt_is_unavailable_without_api_key() -> None:
+    config = Settings(
+        _env_file=None,
+        stt_provider="api",
+        stt_api_key=None,
+    )
 
-    stt = build_stt_from_env()
+    stt = build_stt_from_env(config)
 
     assert isinstance(stt, UnavailableSTT)
 
 
-def test_stt_can_use_local_provider(monkeypatch) -> None:
-    monkeypatch.setenv("STT_PROVIDER", "faster-whisper")
+def test_stt_can_use_local_provider() -> None:
+    config = Settings(
+        _env_file=None,
+        stt_provider="faster-whisper",
+    )
 
-    stt = build_stt_from_env()
+    stt = build_stt_from_env(config)
 
     assert isinstance(stt, FasterWhisperSTT)
 
 
-def test_stt_can_be_disabled(monkeypatch) -> None:
-    monkeypatch.setenv("STT_PROVIDER", "none")
+def test_stt_can_be_disabled() -> None:
+    config = Settings(
+        _env_file=None,
+        stt_provider="none",
+    )
 
-    stt = build_stt_from_env()
+    stt = build_stt_from_env(config)
 
     assert isinstance(stt, UnavailableSTT)
 

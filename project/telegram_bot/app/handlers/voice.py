@@ -11,6 +11,7 @@ from aiogram.types import Message
 from app.api_client import ApiClient, BackendError
 from app.config import Settings
 from app.handlers.text import send_chat_result
+from app.identity import user_id_from_message, username_from_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="voice")
@@ -50,12 +51,13 @@ async def on_voice(
     data = await state.get_data()
     try:
         result = await api.voice(
-            message.chat.id,
+            user_id_from_message(message),
             buffer.getvalue(),
             filename,
             content_type,
             session_id=data.get("session_id"),
             timezone=data.get("timezone") or settings.app_tz,
+            telegram_username=username_from_user(message.from_user),
         )
     except BackendError as exc:
         logger.warning("voice failed: %s", exc.code)

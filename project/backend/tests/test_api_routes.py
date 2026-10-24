@@ -124,7 +124,9 @@ async def resolve_user(
     telegram_id: int | None,
     secret: str | None,
     demo_user: str | None,
+    telegram_username: str | None = None,
 ) -> str:
+    del telegram_username
     if telegram_id is None:
         return demo_user or "demo"
     assert telegram_id == 42

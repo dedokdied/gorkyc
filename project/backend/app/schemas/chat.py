@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
 class ClarificationAnswer(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     session_id: str | None = None
+    timezone: str = "Europe/Moscow"
 
 
 class ActionInfo(BaseModel):

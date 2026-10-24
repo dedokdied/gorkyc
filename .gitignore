@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+SECRETS.local.md
 .venv/
 venv/
 __pycache__/

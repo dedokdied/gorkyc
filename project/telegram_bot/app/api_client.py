@@ -67,11 +67,18 @@ class ApiClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    def _headers(self, telegram_id: int) -> dict[str, str]:
-        return {
+    def _headers(
+        self,
+        telegram_id: int,
+        telegram_username: str | None = None,
+    ) -> dict[str, str]:
+        headers = {
             "X-Telegram-Id": str(telegram_id),
             "X-Bot-Secret": self._settings.bot_internal_secret,
         }
+        if telegram_username:
+            headers["X-Telegram-Username"] = telegram_username
+        return headers
 
     async def chat(
         self,
@@ -80,6 +87,7 @@ class ApiClient:
         *,
         session_id: str | None = None,
         timezone: str | None = None,
+        telegram_username: str | None = None,
     ) -> ChatResult:
         if self._settings.bot_mock_mode:
             return self._mock_chat(telegram_id, text)
@@ -93,6 +101,7 @@ class ApiClient:
             "POST",
             "/chat",
             telegram_id=telegram_id,
+            telegram_username=telegram_username,
             json=payload,
         )
         return self._parse_chat(data)
@@ -106,6 +115,7 @@ class ApiClient:
         *,
         session_id: str | None = None,
         timezone: str | None = None,
+        telegram_username: str | None = None,
     ) -> VoiceResult:
         if self._settings.bot_mock_mode:
             return self._mock_voice(telegram_id)
@@ -117,6 +127,7 @@ class ApiClient:
             "POST",
             "/voice",
             telegram_id=telegram_id,
+            telegram_username=telegram_username,
             files={"file": (filename, audio, content_type)},
             data=form,
         )
@@ -128,6 +139,7 @@ class ApiClient:
         query: str,
         *,
         limit: int = 5,
+        telegram_username: str | None = None,
     ) -> list[dict[str, Any]]:
         if self._settings.bot_mock_mode:
             return self._mock_search(query, limit)
@@ -136,6 +148,7 @@ class ApiClient:
             "POST",
             "/search",
             telegram_id=telegram_id,
+            telegram_username=telegram_username,
             json={"query": query, "limit": limit},
         )
         if isinstance(data, dict):
@@ -159,6 +172,8 @@ class ApiClient:
         text: str,
         *,
         session_id: str | None = None,
+        timezone: str | None = None,
+        telegram_username: str | None = None,
     ) -> ChatResult:
         if self._settings.bot_mock_mode:
             return self._mock_chat(telegram_id, text)
@@ -167,7 +182,12 @@ class ApiClient:
             "POST",
             f"/clarifications/{clarification_id}/answer",
             telegram_id=telegram_id,
-            json={"text": text, "session_id": session_id},
+            telegram_username=telegram_username,
+            json={
+                "text": text,
+                "session_id": session_id,
+                "timezone": timezone or self._settings.app_tz,
+            },
         )
         return self._parse_chat(data)
 
@@ -177,6 +197,7 @@ class ApiClient:
         *,
         start: str | None = None,
         end: str | None = None,
+        telegram_username: str | None = None,
     ) -> list[dict[str, Any]]:
         if self._settings.bot_mock_mode:
             return self._mock_events(start, end)
@@ -191,6 +212,7 @@ class ApiClient:
             "GET",
             "/events",
             telegram_id=telegram_id,
+            telegram_username=telegram_username,
             params={key: value for key, value in params.items() if value is not None},
         )
         if isinstance(data, dict):
@@ -205,13 +227,14 @@ class ApiClient:
         path: str,
         *,
         telegram_id: int,
+        telegram_username: str | None = None,
         **kwargs: Any,
     ) -> Any:
         try:
             response = await self._client.request(
                 method,
                 path,
-                headers=self._headers(telegram_id),
+                headers=self._headers(telegram_id, telegram_username),
                 **kwargs,
             )
         except httpx.HTTPError as exc:

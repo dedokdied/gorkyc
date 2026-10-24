@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from io import BytesIO
 from typing import Any, Protocol
 
 import httpx
+
+from app.core.config import Settings, settings
 
 
 class STTError(Exception):
@@ -137,26 +138,27 @@ class UnavailableSTT:
         raise STTError(self._reason)
 
 
-def build_stt_from_env() -> STTClient:
-    provider = os.getenv("STT_PROVIDER", "api").strip().lower()
+def build_stt_from_env(config: Settings | None = None) -> STTClient:
+    cfg = config or settings
+    provider = (cfg.stt_provider or "api").strip().lower()
     if provider in {"none", "off", "unavailable"}:
         return UnavailableSTT()
     if provider in {"api", "openai", "openai-compatible", "openai_compatible"}:
-        api_key = os.getenv("STT_API_KEY", "").strip()
+        api_key = (cfg.stt_api_key or "").strip()
         if not api_key:
             return UnavailableSTT("STT_API_KEY is not configured")
         return OpenAIWhisperSTT(
             api_key=api_key,
-            model=os.getenv("STT_MODEL", "whisper-1"),
-            base_url=os.getenv("STT_BASE_URL", "https://api.openai.com/v1"),
-            timeout=float(os.getenv("STT_TIMEOUT", "60")),
-            language=os.getenv("STT_LANGUAGE", "ru"),
+            model=cfg.stt_model,
+            base_url=cfg.stt_base_url,
+            timeout=cfg.stt_timeout,
+            language=cfg.stt_language,
         )
     if provider in {"faster-whisper", "faster_whisper", "local"}:
         return FasterWhisperSTT(
-            model_size=os.getenv("STT_MODEL", "small"),
-            device=os.getenv("STT_DEVICE", "cpu"),
-            compute_type=os.getenv("STT_COMPUTE_TYPE", "int8"),
-            language=os.getenv("STT_LANGUAGE", "ru"),
+            model_size=cfg.stt_model,
+            device=cfg.stt_device,
+            compute_type=cfg.stt_compute_type,
+            language=cfg.stt_language,
         )
     raise ValueError(f"Unsupported STT_PROVIDER: {provider}")

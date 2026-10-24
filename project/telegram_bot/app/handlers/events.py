@@ -11,6 +11,7 @@ from aiogram.types import Message
 from app.api_client import ApiClient, BackendError
 from app.config import Settings
 from app.formatting import format_events
+from app.identity import user_id_from_message, username_from_user
 from app.time_ranges import local_range
 
 logger = logging.getLogger(__name__)
@@ -76,9 +77,10 @@ async def cmd_search(
 
     try:
         events = await api.search_events(
-            message.chat.id,
+            user_id_from_message(message),
             query,
             limit=5,
+            telegram_username=username_from_user(message.from_user),
         )
     except BackendError as exc:
         logger.warning("search failed: %s", exc.code)
@@ -111,9 +113,10 @@ async def send_period(
 
     try:
         events = await api.list_events(
-            message.chat.id,
+            user_id_from_message(message),
             start=start.isoformat(),
             end=end.isoformat(),
+            telegram_username=username_from_user(message.from_user),
         )
     except BackendError as exc:
         logger.warning("list events failed: %s", exc.code)

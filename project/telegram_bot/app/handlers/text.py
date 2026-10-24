@@ -4,15 +4,23 @@ import logging
 
 from aiogram import F, Router
 from aiogram.enums import ChatAction
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from app.api_client import ApiClient, BackendError, ChatResult
 from app.config import Settings
+from app.identity import user_id_from_message, username_from_user
 from app.keyboards import clarification_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name="text")
+
+
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    await state.update_data(clarification_id=None, clarification_options=[])
+    await message.answer("Отменил уточнение. Напиши новый запрос.")
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -33,14 +41,41 @@ async def on_text(
 
     data = await state.get_data()
     session_id = data.get("session_id")
+    timezone = data.get("timezone") or settings.app_tz
+    clarification_id = data.get("clarification_id")
+    user_id = user_id_from_message(message)
+    username = username_from_user(message.from_user)
 
     try:
-        result = await api.chat(
-            message.chat.id,
-            text,
-            session_id=session_id,
-            timezone=data.get("timezone") or settings.app_tz,
-        )
+        if clarification_id:
+            result = await api.answer_clarification(
+                user_id,
+                str(clarification_id),
+                text,
+                session_id=session_id,
+                timezone=timezone,
+                telegram_username=username,
+            )
+            if "неактуально" in result.reply.lower():
+                await state.update_data(
+                    clarification_id=None,
+                    clarification_options=[],
+                )
+                result = await api.chat(
+                    user_id,
+                    text,
+                    session_id=session_id,
+                    timezone=timezone,
+                    telegram_username=username,
+                )
+        else:
+            result = await api.chat(
+                user_id,
+                text,
+                session_id=session_id,
+                timezone=timezone,
+                telegram_username=username,
+            )
     except BackendError as exc:
         logger.warning("chat failed: %s", exc.code)
         await message.answer(exc.user_message)

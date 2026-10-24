@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
 
+from app.core.config import Settings, settings
 from app.schemas.tools import (
     AskClarificationArgs,
     CreateEventArgs,
@@ -252,29 +252,30 @@ class RuleBasedLLM:
         )
 
 
-def build_llm_from_env() -> LLMClient:
-    provider = os.getenv("LLM_PROVIDER", "api").strip().lower()
+def build_llm_from_env(config: Settings | None = None) -> LLMClient:
+    cfg = config or settings
+    provider = (cfg.llm_provider or "api").strip().lower()
     if provider in {"rule-based", "rule_based", "none", "off"}:
         return RuleBasedLLM()
     if provider in {"api", "openai", "openai-compatible", "openai_compatible"}:
-        api_key = os.getenv("LLM_API_KEY", "").strip()
+        api_key = (cfg.llm_api_key or "").strip()
         if not api_key:
             return RuleBasedLLM()
         return FallbackLLM(
             primary=OpenAICompatibleLLM(
                 api_key=api_key,
-                model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-                base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
-                timeout=float(os.getenv("LLM_TIMEOUT", "60")),
+                model=cfg.llm_model or "gpt-4o-mini",
+                base_url=cfg.llm_base_url or "https://api.openai.com/v1",
+                timeout=cfg.llm_timeout,
             ),
             fallback=RuleBasedLLM(),
         )
     if provider in {"ollama", "local"}:
         return FallbackLLM(
             primary=OllamaLLM(
-                model=os.getenv("LLM_MODEL", "qwen2.5:3b"),
-                base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"),
-                timeout=float(os.getenv("LLM_TIMEOUT", "120")),
+                model=cfg.llm_model or "qwen2.5:3b",
+                base_url=cfg.llm_base_url or "http://localhost:11434/v1",
+                timeout=cfg.llm_timeout,
             ),
             fallback=RuleBasedLLM(),
         )

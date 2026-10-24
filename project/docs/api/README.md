@@ -11,7 +11,9 @@
   Поля события (`starts_at`, `ends_at`, `due_at`) возвращаются в таймзоне
   события; `created_at`/`updated_at` — в UTC.
 - Авторизация на время хакатона:
-  - Telegram-бот: `X-Telegram-Id: <chat_id>` + `X-Bot-Secret: <secret>`;
+  - Telegram-бот: `X-Telegram-Id: <user_id>` + `X-Bot-Secret: <secret>`;
+  - `X-Telegram-Username: @username` — необязательный заголовок только для
+    отображения; идентичность всегда определяется по числовому `user_id`;
   - Web: `X-Demo-User: demo` (если заголовок не передан — `demo`);
   - при наличии Telegram-заголовков они имеют приоритет.
   Позже заменяется на JWT без изменения остальных DTO.
@@ -260,7 +262,7 @@ POST /chat {"text": "Напомни завтра в 10 утра позвонит
 ```
 POST /chat {"text": "Поставь встречу с Иваном завтра"}
 → 200 {"clarification": {"id": "...", "question": "На какое время поставить встречу?", ...}}
-POST /clarifications/{id}/answer {"text": "В 15:00"}
+POST /clarifications/{id}/answer {"text": "В 15:00", "timezone": "Europe/Moscow"}
 → 200 {"reply": "Создал встречу с Иваном завтра в 15:00", "action": {...}}
 ```
 
@@ -284,14 +286,16 @@ POST /search {"query": "задача про презентацию", "limit": 5}
 - **LLM-инструменты** принимают `time_expression` (исходную фразу), а сервер
   резолвит её в ISO. Модель не считает даты.
 - `user_id` всегда берётся из `X-Telegram-Id`/`X-Demo-User`/auth, не из тела
-  запроса.
+  запроса. Все запросы к событиям и поиску фильтруются по этому `user_id`.
 - Telegram-бот не вызывает LLM напрямую: только backend.
+- Для групповых чатов бот использует `message.from_user.id`, а не `chat.id`,
+  поэтому участники группы не смешиваются в одного пользователя.
 
 ## Клиенты
 
 | Клиент | Заголовки | Что использует |
 |---|---|---|
-| Telegram-бот | `X-Telegram-Id`, `X-Bot-Secret` | `/chat`, `/voice`, `/events`, `/search` |
+| Telegram-бот | `X-Telegram-Id`, `X-Telegram-Username`, `X-Bot-Secret` | `/chat`, `/voice`, `/events`, `/search` |
 | Web | `X-Demo-User: demo` | те же эндпоинты |
 
 ## Изменения контракта

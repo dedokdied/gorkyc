@@ -22,7 +22,12 @@ from app.schemas.tools import (
     SearchEventsArgs,
     UpdateEventArgs,
 )
-from app.services.dialogue import PendingAction, PendingActionStore
+from app.services.dialogue import (
+    ConversationStore,
+    InMemoryConversationStore,
+    PendingAction,
+    PendingActionStore,
+)
 
 
 class ClarificationNeeded(Exception):
@@ -90,11 +95,13 @@ class Assistant:
         llm: LLMClient,
         tools: ToolExecutor,
         pending: PendingActionStore,
+        history: ConversationStore | None = None,
         max_tool_rounds: int = 2,
     ) -> None:
         self._llm = llm
         self._tools = tools
         self._pending = pending
+        self._history = history or InMemoryConversationStore(max_messages=4)
         self._max_tool_rounds = max_tool_rounds
 
     async def handle(
@@ -106,8 +113,14 @@ class Assistant:
         timezone: str = "Europe/Moscow",
     ) -> ChatResponse:
         session = session_id or str(uuid4())
+        history = [
+            {"role": item["role"], "content": item["content"]}
+            for item in await self._history.get(user_id)
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        ]
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": self._system_prompt(timezone)},
+            *history,
             {"role": "user", "content": text},
         ]
         action: ActionInfo | None = None
@@ -115,11 +128,13 @@ class Assistant:
         for _ in range(self._max_tool_rounds):
             turn = await self._llm.complete(messages, TOOL_SCHEMAS)
             if not turn.tool_calls:
-                return ChatResponse(
+                response = ChatResponse(
                     session_id=session,
                     reply=turn.content or "Готово.",
                     action=action,
                 )
+                await self._remember(user_id, text, response.reply)
+                return response
 
             messages.append(self._assistant_tool_message(turn.content, turn.tool_calls))
             for call in turn.tool_calls:
@@ -142,7 +157,7 @@ class Assistant:
                         missing=exc.missing,
                     )
                     await self._pending.save(pending)
-                    return ChatResponse(
+                    response = ChatResponse(
                         session_id=session,
                         reply=exc.question,
                         action=ActionInfo(
@@ -156,6 +171,8 @@ class Assistant:
                             missing=exc.missing,
                         ),
                     )
+                    await self._remember(user_id, text, response.reply)
+                    return response
 
                 action = self._action_from_result(call.name, result)
                 messages.append(
@@ -167,11 +184,13 @@ class Assistant:
                     }
                 )
 
-        return ChatResponse(
+        response = ChatResponse(
             session_id=session,
             reply="Не смог обработать запрос. Попробуй переформулировать.",
             action=action,
         )
+        await self._remember(user_id, text, response.reply)
+        return response
 
     async def answer_clarification(
         self,
@@ -183,15 +202,23 @@ class Assistant:
         timezone: str = "Europe/Moscow",
     ) -> ChatResponse:
         pending = await self._pending.pop(clarification_id)
-        if pending is None:
+        if pending is None or pending.user_id != user_id:
             return ChatResponse(
                 session_id=session_id or str(uuid4()),
                 reply="Это уточнение уже неактуально. Напиши запрос заново.",
             )
 
-        args = dict(pending.args)
-        original_time = str(args.get("time_expression") or "")
-        args["time_expression"] = f"{original_time} {text}".strip()
+        # ask_clarification does not carry tool arguments. Let the model see
+        # its own question in the dialogue history and resolve the answer.
+        if pending.intent == "ask_clarification":
+            return await self.handle(
+                user_id,
+                text,
+                session_id=pending.session_id,
+                timezone=timezone,
+            )
+
+        args = self._merge_answer(pending, text)
         call = ToolCall(
             id=f"call-{uuid4()}",
             name=pending.intent,
@@ -216,7 +243,7 @@ class Assistant:
                 missing=exc.missing,
             )
             await self._pending.save(updated)
-            return ChatResponse(
+            response = ChatResponse(
                 session_id=pending.session_id,
                 reply=exc.question,
                 action=ActionInfo(
@@ -230,12 +257,49 @@ class Assistant:
                     missing=exc.missing,
                 ),
             )
+            await self._remember(user_id, text, response.reply)
+            return response
 
-        return ChatResponse(
+        response = ChatResponse(
             session_id=pending.session_id,
             reply=self._reply_for_result(pending.intent, result),
             action=self._action_from_result(pending.intent, result),
         )
+        await self._remember(user_id, text, response.reply)
+        return response
+
+    @staticmethod
+    def _merge_answer(pending: PendingAction, text: str) -> dict[str, Any]:
+        """Put a free-form answer into the field the server asked about."""
+        args = dict(pending.args)
+        missing = set(pending.missing)
+
+        if "title" in missing:
+            args["title"] = text
+            return args
+        if missing & {"starts_at", "due_at", "time_expression", "ends_at"}:
+            original = str(args.get("time_expression") or "").strip()
+            args["time_expression"] = f"{original} {text}".strip()
+            return args
+        if missing & {"duration_minutes", "duration_expression"}:
+            args["duration_expression"] = text
+            return args
+        if "description" in missing:
+            args["description"] = text
+            return args
+
+        # Older pending actions did not always declare missing fields.
+        original = str(args.get("time_expression") or "").strip()
+        args["time_expression"] = f"{original} {text}".strip()
+        return args
+
+    async def _remember(
+        self,
+        user_id: str,
+        user_text: str,
+        assistant_text: str,
+    ) -> None:
+        await self._history.append(user_id, user_text, assistant_text)
 
     async def _execute_tool(
         self,
@@ -278,6 +342,16 @@ class Assistant:
                     "timezone": timezone,
                 }
         except ValidationError as exc:
+            fields = {
+                str(error["loc"][0])
+                for error in exc.errors()
+                if error.get("loc")
+            }
+            if call.name == "create_event" and "title" in fields:
+                raise ClarificationNeeded(
+                    "Что нужно сделать?",
+                    missing=["title"],
+                ) from exc
             return {"error": "invalid_arguments", "details": str(exc)}
         return {"error": "unknown_tool", "name": call.name}
 
@@ -304,6 +378,8 @@ class Assistant:
 
     @staticmethod
     def _action_from_result(name: str, result: Any) -> ActionInfo:
+        if isinstance(result, dict) and result.get("error"):
+            return ActionInfo(name=name, status="failed")
         entity_id = None
         if isinstance(result, dict):
             raw_id = result.get("id")
@@ -312,6 +388,8 @@ class Assistant:
 
     @staticmethod
     def _reply_for_result(name: str, result: Any) -> str:
+        if isinstance(result, dict) and result.get("error"):
+            return str(result.get("message") or "Не получилось выполнить действие.")
         if name in {"list_events", "search_events"}:
             count = len(result) if isinstance(result, list) else 0
             if count == 0:
@@ -329,9 +407,14 @@ class Assistant:
     def _system_prompt(timezone: str) -> str:
         now = datetime.now(ZoneInfo(timezone)).isoformat()
         return (
-            "Ты ассистент задач и встреч. Не считай даты самостоятельно: "
-            "передавай исходное выражение времени в time_expression. "
-            "Не придумывай event_id. Если не хватает обязательных полей, "
-            "используй ask_clarification. Отвечай кратко, по-русски. "
+            "Ты ассистент задач и встреч. Учитывай историю диалога: если "
+            "пользователь отвечает на твой предыдущий вопрос, используй "
+            "контекст. Не считай даты самостоятельно: передавай исходное "
+            "выражение времени в time_expression. Не придумывай event_id. "
+            "Если не хватает обязательных полей, используй ask_clarification. "
+            "Для создания события вызывай create_event с уже известными "
+            "полями: недостающие поля сервер уточнит сам. Никогда не "
+            "предлагай нажимать кнопки и не упоминай кнопки или интерфейс: "
+            "все вопросы задавай обычным текстом. Отвечай кратко, по-русски. "
             f"Сейчас: {now}, таймзона: {timezone}."
         )

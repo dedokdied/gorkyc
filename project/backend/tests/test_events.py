@@ -1,6 +1,8 @@
 
 import pytest
 
+from app.core.config import settings
+
 
 async def create_event(client, **payload):
     response = await client.post("/api/v1/events", json=payload)
@@ -33,6 +35,37 @@ async def test_create_task_and_get(client):
     response = await client.get(f"/api/v1/events/{created['id']}")
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
+
+
+@pytest.mark.asyncio
+async def test_events_are_isolated_by_telegram_account(client):
+    headers_a = {
+        "X-Telegram-Id": "1001",
+        "X-Telegram-Username": "@alice",
+        "X-Bot-Secret": settings.bot_internal_secret,
+    }
+    headers_b = {
+        "X-Telegram-Id": "1002",
+        "X-Telegram-Username": "@bob",
+        "X-Bot-Secret": settings.bot_internal_secret,
+    }
+
+    created = await client.post(
+        "/api/v1/events",
+        json={
+            "type": "task",
+            "title": "Личная задача Алисы",
+            "timezone": "Europe/Moscow",
+        },
+        headers=headers_a,
+    )
+    assert created.status_code == 201, created.text
+
+    alice = await client.get("/api/v1/events", headers=headers_a)
+    bob = await client.get("/api/v1/events", headers=headers_b)
+
+    assert [item["title"] for item in alice.json()] == ["Личная задача Алисы"]
+    assert bob.json() == []
 
 
 @pytest.mark.asyncio

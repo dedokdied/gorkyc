@@ -6,8 +6,19 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.api import deps
-from app.api.deps import get_current_user_id, resolve_telegram_user
+from app.api.deps import (
+    get_current_user_id,
+    normalize_telegram_username,
+    resolve_telegram_user,
+)
 from app.main import app
+
+
+def test_telegram_username_is_normalized_for_display() -> None:
+    assert normalize_telegram_username("@Ivan_42") == "Ivan_42"
+    assert normalize_telegram_username("  @ivan ") == "ivan"
+    assert normalize_telegram_username(None) is None
+    assert normalize_telegram_username("bad name") is None
 
 
 @pytest.mark.asyncio
@@ -15,6 +26,7 @@ async def test_bot_secret_is_rejected_before_db_access() -> None:
     with pytest.raises(HTTPException) as exc_info:
         await get_current_user_id(
             x_telegram_id=42,
+            x_telegram_username=None,
             x_bot_secret="wrong",
             db=None,
         )
@@ -51,6 +63,7 @@ async def test_resolve_api_user_demo_path_passes_explicit_empty_telegram(
 
     assert await deps.resolve_api_user(None, None, "alice") == expected
     assert captured["x_telegram_id"] is None
+    assert captured["x_telegram_username"] is None
     assert captured["x_bot_secret"] is None
     assert captured["x_demo_user"] == "alice"
 
