@@ -35,6 +35,12 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                     callback_data="onboarding:plans",
                 ),
             ],
+            [
+                InlineKeyboardButton(
+                    text="🔗 Связать с сайтом",
+                    callback_data="link:code",
+                ),
+            ],
         ]
     )
 

@@ -24,6 +24,14 @@ from sqlalchemy.types import Uuid
 
 from app.models import Base
 
+# PostgreSQL's lower()/ILIKE follow the database collation. A database created
+# with --locale=C does not fold Cyrillic, which makes Russian search
+# case-sensitive. Fold both alphabets explicitly so behavior does not depend
+# on how the cluster was initialized.
+CYRILLIC_UPPER = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+CYRILLIC_LOWER = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+SEARCH_FOLD_SQL = f"lower(translate(search_text, '{CYRILLIC_UPPER}', '{CYRILLIC_LOWER}'))"
+
 
 class EventType(str, enum.Enum):
     task = "task"
@@ -110,7 +118,7 @@ class Event(Base):
     )
     tsv: Mapped[str | None] = mapped_column(
         TSVECTOR,
-        Computed("to_tsvector('russian', search_text)", persisted=True),
+        Computed(f"to_tsvector('russian', {SEARCH_FOLD_SQL})", persisted=True),
         nullable=True,
     )
     # Векторный поиск отложен: в демо-окружении нет расширения pgvector.
@@ -130,6 +138,10 @@ class Event(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    web_ack_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

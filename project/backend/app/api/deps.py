@@ -1,6 +1,7 @@
 import re
 import secrets
 import uuid
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException
@@ -9,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import InvalidTokenError, decode_access_token
 from app.db import SessionLocal, get_db
 from app.models.user import User
 
@@ -38,22 +40,85 @@ def _verify_bot_secret(secret: str | None) -> None:
         )
 
 
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    normalized = token.strip()
+    return normalized or None
+
+
+async def _user_from_bearer(authorization: str | None, db: AsyncSession) -> User:
+    token = _extract_bearer_token(authorization)
+    if token is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "unauthorized", "message": "invalid_access_token"},
+        )
+    try:
+        user_id = decode_access_token(token)
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "unauthorized", "message": "invalid_access_token"},
+        ) from None
+
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "unauthorized", "message": "user_not_found"},
+        )
+    return user
+
+
+async def get_authenticated_user(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Require a real web session. Demo headers are intentionally not accepted."""
+
+    return await _user_from_bearer(authorization, db)
+
+
 async def get_current_user_id(
-    x_demo_user: str | None = Header(default=None, alias="X-Demo-User", max_length=100),
-    x_telegram_id: int | None = Header(default=None, alias="X-Telegram-Id"),
-    x_telegram_username: str | None = Header(
-        default=None,
-        alias="X-Telegram-Username",
-        max_length=64,
-    ),
-    x_bot_secret: str | None = Header(default=None, alias="X-Bot-Secret"),
+    x_demo_user: Annotated[
+        str | None,
+        Header(alias="X-Demo-User", max_length=100),
+    ] = None,
+    x_telegram_id: Annotated[int | None, Header(alias="X-Telegram-Id")] = None,
+    x_telegram_username: Annotated[
+        str | None,
+        Header(alias="X-Telegram-Username", max_length=64),
+    ] = None,
+    x_bot_secret: Annotated[str | None, Header(alias="X-Bot-Secret")] = None,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     db: AsyncSession = Depends(get_db),
 ) -> UUID:
     username = normalize_telegram_username(x_telegram_username)
     if x_telegram_id is not None:
         _verify_bot_secret(x_bot_secret)
+
+        # A linked account keeps its web identity but is resolved from the
+        # Telegram id on every bot request. This is what makes events shared.
+        linked = await db.scalar(select(User).where(User.telegram_id == x_telegram_id))
+        if linked is not None:
+            if username and linked.telegram_username != username:
+                linked.telegram_username = username
+                await db.commit()
+            return linked.id
+
         peer_id = f"telegram:{x_telegram_id}"
+    elif authorization:
+        return (await _user_from_bearer(authorization, db)).id
     else:
+        if not settings.allow_demo_auth:
+            raise HTTPException(
+                status_code=401,
+                detail={"code": "unauthorized", "message": "authorization_required"},
+            )
         peer_id = (x_demo_user or "demo").strip() or "demo"
 
     display_name = f"@{username}" if username else peer_id
@@ -63,14 +128,20 @@ async def get_current_user_id(
         "display_name": display_name,
         "timezone": settings.app_tz,
     }
+    if x_telegram_id is not None:
+        values["telegram_id"] = x_telegram_id
+        values["telegram_username"] = username
 
     # Idempotent upsert: safe under concurrent requests and doesn't create
     # duplicate users for the same Telegram account. If a username is known,
     # refresh display_name without touching the canonical peer id.
     if username:
+        set_values: dict[str, object] = {"display_name": display_name}
+        if x_telegram_id is not None:
+            set_values["telegram_username"] = username
         stmt = pg_insert(User).values(**values).on_conflict_do_update(
             index_elements=["openclaw_peer_id"],
-            set_={"display_name": display_name},
+            set_=set_values,
         )
     else:
         stmt = pg_insert(User).values(**values).on_conflict_do_nothing(
@@ -90,9 +161,34 @@ async def get_current_user_id(
 
 
 async def get_current_user(
-    user_id: UUID = Depends(get_current_user_id),
+    x_telegram_id: Annotated[int | None, Header(alias="X-Telegram-Id")] = None,
+    x_telegram_username: Annotated[
+        str | None,
+        Header(alias="X-Telegram-Username", max_length=64),
+    ] = None,
+    x_bot_secret: Annotated[str | None, Header(alias="X-Bot-Secret")] = None,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    """Resolve a real web session or a verified Telegram account.
+
+    Unlike ``get_current_user_id``, the demo header is not accepted: profile
+    endpoints must not turn an anonymous request into ``demo``.
+    """
+
+    if x_telegram_id is None and not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "unauthorized", "message": "authorization_required"},
+        )
+    user_id = await get_current_user_id(
+        x_demo_user=None,
+        x_telegram_id=x_telegram_id,
+        x_telegram_username=x_telegram_username,
+        x_bot_secret=x_bot_secret,
+        authorization=authorization,
+        db=db,
+    )
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
@@ -123,6 +219,7 @@ async def resolve_api_user(
     secret: str | None,
     demo_user: str | None,
     telegram_username: str | None = None,
+    authorization: str | None = None,
 ) -> UUID:
     if telegram_id is not None:
         return await resolve_telegram_user(
@@ -137,5 +234,6 @@ async def resolve_api_user(
             x_telegram_username=None,
             x_bot_secret=None,
             x_demo_user=demo_user,
+            authorization=authorization,
             db=db,
         )

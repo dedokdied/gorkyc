@@ -10,7 +10,7 @@ from app.schemas.chat import VoiceResponse
 from app.services.voice import VoiceError, VoiceService
 
 UserResolver = Callable[
-    [int | None, str | None, str | None, str | None],
+    [int | None, str | None, str | None, str | None, str | None],
     Awaitable[str],
 ]
 MAX_AUDIO_BYTES = 20 * 1024 * 1024
@@ -33,6 +33,7 @@ def build_voice_router(
         ] = None,
         x_bot_secret: Annotated[str | None, Header(alias="X-Bot-Secret")] = None,
         x_demo_user: Annotated[str | None, Header(alias="X-Demo-User")] = None,
+        authorization: Annotated[str | None, Header(alias="Authorization")] = None,
         session_id: Annotated[str | None, Form()] = None,
         timezone: Annotated[str, Form()] = "Europe/Moscow",
         clarification_id: Annotated[str | None, Form()] = None,
@@ -42,6 +43,7 @@ def build_voice_router(
             x_bot_secret,
             x_demo_user,
             x_telegram_username,
+            authorization,
         )
         audio = await file.read()
         if len(audio) > MAX_AUDIO_BYTES:

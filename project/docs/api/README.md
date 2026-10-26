@@ -10,13 +10,17 @@
 - Время: ISO 8601 с таймзоной (`2026-10-23T10:00:00+03:00`), хранение в UTC.
   Поля события (`starts_at`, `ends_at`, `due_at`) возвращаются в таймзоне
   события; `created_at`/`updated_at` — в UTC.
-- Авторизация на время хакатона:
+- Авторизация:
+  - Web: `Authorization: Bearer <access_token>`; токен выдаётся
+    `/auth/register` и `/auth/login`;
   - Telegram-бот: `X-Telegram-Id: <user_id>` + `X-Bot-Secret: <secret>`;
   - `X-Telegram-Username: @username` — необязательный заголовок только для
     отображения; идентичность всегда определяется по числовому `user_id`;
-  - Web: `X-Demo-User: demo` (если заголовок не передан — `demo`);
-  - при наличии Telegram-заголовков они имеют приоритет.
-  Позже заменяется на JWT без изменения остальных DTO.
+  - `X-Demo-User: demo` — legacy/тестовый режим, включается
+    `ALLOW_DEMO_AUTH=true`; в production выключается;
+  - при наличии Telegram-заголовков они имеют приоритет над Bearer.
+- Access-токен подписан HMAC-SHA256 и живёт `WEB_TOKEN_TTL_SECONDS`
+  (по умолчанию 7 дней). Refresh-токены и отзыв сессий — следующий этап.
 - CORS для web: origin(ы) из `WEB_ORIGIN` (список через запятую).
 - Telegram-бот — тонкий клиент: сам не пишет в БД и не вызывает LLM.
 - Ошибки:
@@ -40,6 +44,13 @@
 
 | Метод | Путь | Владелец | Назначение |
 |---|---|---|---|
+| POST | `/auth/register` | B | регистрация web-аккаунта |
+| POST | `/auth/login` | B | вход, выдача access-токена |
+| GET | `/auth/me` | B | профиль (Bearer или Telegram-заголовки) |
+| PATCH | `/auth/me` | B | имя, таймзона, onboarding |
+| POST | `/auth/link-telegram` | B | привязать Telegram по коду |
+| POST | `/auth/logout` | B | no-op для stateless-токена |
+| POST | `/telegram/link-code` | B | одноразовый код для привязки |
 | GET | `/events` | A | список за период |
 | POST | `/events` | A | создать событие |
 | GET | `/events/{id}` | A | получить событие |
@@ -50,7 +61,66 @@
 | POST | `/chat` | B | текст → ответ ассистента |
 | POST | `/voice` | B | аудио → расшифровка → ответ |
 | POST | `/clarifications/{id}/answer` | B | ответ на уточнение |
+| GET | `/chat/history?session_id=...` | B | история диалога |
+| DELETE | `/chat/history?session_id=...` | B | очистить диалог |
+| GET | `/sessions/{id}/messages` | B | alias истории диалога |
+| DELETE | `/sessions/{id}/messages` | B | alias очистки диалога |
+| GET | `/reminders/inbox` | A | напоминания для in-app баннера |
+| POST | `/reminders/{id}/ack` | A | закрыть напоминание на сайте |
 | GET | `/healthz`, `/readyz` | вместе | health |
+
+## Auth DTO
+
+### RegisterRequest
+
+```json
+{
+  "email": "you@example.com",
+  "password": "минимум 8 символов",
+  "display_name": "Иван",
+  "timezone": "Europe/Moscow"
+}
+```
+
+`display_name` и `timezone` необязательны. Email нормализуется в нижний
+регистр. Пароль хешируется на сервере (PBKDF2-SHA256) и никогда не
+возвращается.
+
+### LoginRequest
+
+```json
+{
+  "email": "you@example.com",
+  "password": "пароль"
+}
+```
+
+### AuthResponse
+
+```json
+{
+  "access_token": "header.payload.signature",
+  "token_type": "bearer",
+  "user": {
+    "id": "uuid",
+    "email": "you@example.com",
+    "display_name": "Иван",
+    "timezone": "Europe/Moscow",
+    "created_at": "2026-10-25T12:00:00Z",
+    "telegram_linked": false,
+    "telegram_username": null,
+    "onboarding_seen": true
+  }
+}
+```
+
+`PATCH /auth/me` принимает любое подмножество `display_name`, `timezone`,
+`onboarding_seen`. Таймзона проверяется через IANA `ZoneInfo`. `/auth/me`
+работает и с Bearer, и с Telegram-заголовками, поэтому бот использует его для
+`/settings`.
+
+Ошибки: `409 email_taken` при повторной регистрации, `401
+invalid_credentials` при неверной паре email/пароль.
 
 ## DTO
 
@@ -105,8 +175,10 @@
 }
 ```
 
-`source`: `text`, `voice`, `import`. `recurrence` — строка правила (например,
-RRULE) или `null`; в текущем ядре не раскрывается в отдельные события.
+`source`: `text`, `voice`, `import`. `recurrence`: `daily`, `weekly`,
+`monthly` или `null`. При `POST /events/{id}/complete` повторяющееся событие
+создаёт следующий экземпляр (`status=planned`, `parent_id` указывает на
+первый экземпляр).
 
 `DELETE /events/{id}` удаляет событие. Статус `cancelled` зарезервирован для
 будущего сценария отмены; текущий контракт не требует отдельного endpoint.
@@ -186,7 +258,8 @@ FTS + trigram. `embedding` хранится как JSONB-заглушка, фл�
 ```
 
 `session_id = null` — backend создаёт сессию для текущего канала. Для Telegram
-`external_id` сессии = `chat_id`, для web — id demo-сессии.
+`external_id` сессии = `chat_id`, для web — id сессии, сохранённый в
+localStorage. История и pending-actions пока in-memory.
 
 ### VoiceRequest
 
@@ -247,6 +320,31 @@ FTS + trigram. `embedding` хранится как JSONB-заглушка, фл�
 }
 ```
 
+## История диалога
+
+`GET /chat/history?session_id=<uuid>` и alias
+`GET /sessions/<uuid>/messages` возвращают список:
+
+```json
+[
+  {"id": "uuid", "role": "user", "content": "Напомни завтра", "created_at": "..."},
+  {"id": "uuid", "role": "assistant", "content": "Готово.", "created_at": "..."}
+]
+```
+
+История хранится в PostgreSQL (`sessions` + `messages`) и привязана к паре
+`user_id` + `session_id`. Чужую сессию нельзя прочитать или очистить.
+`DELETE` с тем же путём удаляет сообщения и сессию, а также незавершённое
+уточнение этой сессии.
+
+## Напоминания на сайте
+
+- `GET /reminders/inbox` — напоминания, у которых `due_at <= now`,
+  `status=planned` и `web_ack_at IS NULL`.
+- `POST /reminders/{id}/ack` — закрыть напоминание в веб-интерфейсе
+  (`web_ack_at=now`). Telegram-доставка учитывается отдельно через
+  `reminder_sent_at`, поэтому баннер и сообщение бота не мешают друг другу.
+
 ## Примеры сценариев
 
 ### Создание задачи
@@ -285,8 +383,9 @@ POST /search {"query": "задача про презентацию", "limit": 5}
 - **Публичный API** принимает готовые ISO-даты (`EventCreate`).
 - **LLM-инструменты** принимают `time_expression` (исходную фразу), а сервер
   резолвит её в ISO. Модель не считает даты.
-- `user_id` всегда берётся из `X-Telegram-Id`/`X-Demo-User`/auth, не из тела
-  запроса. Все запросы к событиям и поиску фильтруются по этому `user_id`.
+- `user_id` всегда берётся из `Authorization: Bearer` /
+  `X-Telegram-Id` / legacy `X-Demo-User`, не из тела запроса. Все запросы к
+  событиям и поиску фильтруются по этому `user_id`.
 - Telegram-бот не вызывает LLM напрямую: только backend.
 - Для групповых чатов бот использует `message.from_user.id`, а не `chat.id`,
   поэтому участники группы не смешиваются в одного пользователя.
@@ -295,8 +394,9 @@ POST /search {"query": "задача про презентацию", "limit": 5}
 
 | Клиент | Заголовки | Что использует |
 |---|---|---|
-| Telegram-бот | `X-Telegram-Id`, `X-Telegram-Username`, `X-Bot-Secret` | `/chat`, `/voice`, `/events`, `/search` |
-| Web | `X-Demo-User: demo` | те же эндпоинты |
+| Telegram-бот | `X-Telegram-Id`, `X-Telegram-Username`, `X-Bot-Secret` | `/chat`, `/voice`, `/events`, `/search`, `/auth/me`, `/telegram/link-code` |
+| Web | `Authorization: Bearer <token>` | `/auth/*`, `/chat`, `/chat/history`, `/reminders/*`, `/voice`, `/events`, `/search` |
+| Legacy / тесты | `X-Demo-User: demo` | те же эндпоинты при `ALLOW_DEMO_AUTH=true` |
 
 ## Изменения контракта
 

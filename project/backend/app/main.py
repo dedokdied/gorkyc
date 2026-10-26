@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import models  # noqa: F401
-from app.api import events, health, search
+from app.api import auth, events, health, reminders, search, telegram
 from app.api.chat import build_chat_router
 from app.api.deps import resolve_api_user
 from app.api.voice import build_voice_router
@@ -20,7 +20,8 @@ from app.integrations.stt import build_stt_from_env
 from app.integrations.telegram_notifier import TelegramNotifier
 from app.services.assistant import Assistant
 from app.services.assistant_tools import DbToolExecutor
-from app.services.dialogue import InMemoryPendingActionStore
+from app.services.conversation_db import DbConversationStore
+from app.services.pending_db import DbPendingActionStore
 from app.services.events import ConflictError, DomainValidationError, NotFoundError
 from app.services.reminders import ReminderService
 from app.services.voice import VoiceService
@@ -32,7 +33,8 @@ logger = get_logger("assistant.api")
 assistant = Assistant(
     llm=build_llm_from_env(),
     tools=DbToolExecutor(),
-    pending=InMemoryPendingActionStore(),
+    pending=DbPendingActionStore(SessionLocal),
+    history=DbConversationStore(SessionLocal),
 )
 voice_service = VoiceService(
     stt=build_stt_from_env(),
@@ -150,8 +152,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 app.include_router(health.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
+app.include_router(reminders.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
+app.include_router(telegram.router, prefix="/api/v1")
 app.include_router(
     build_chat_router(
         assistant=assistant,

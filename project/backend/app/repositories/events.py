@@ -4,7 +4,18 @@ from uuid import UUID
 from sqlalchemy import Select, and_, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.event import Event, EventStatus, EventType
+from app.models.event import (
+    CYRILLIC_LOWER,
+    CYRILLIC_UPPER,
+    Event,
+    EventStatus,
+    EventType,
+)
+
+
+def _fold(column: Any):
+    """Case-fold text in SQL independently of the database collation."""
+    return func.lower(func.translate(column, CYRILLIC_UPPER, CYRILLIC_LOWER))
 
 
 def _period_condition(start: Any | None, end: Any | None):
@@ -109,7 +120,7 @@ class EventRepository:
         end: Any | None,
         limit: int,
     ) -> Select:
-        q = (query or "").strip()
+        q = (query or "").strip().casefold()
         stmt = select(Event).where(Event.user_id == user_id)
         if event_type is not None:
             stmt = stmt.where(Event.type == event_type)
@@ -122,7 +133,7 @@ class EventRepository:
 
         tsquery = func.plainto_tsquery("russian", q)
         rank = func.ts_rank_cd(Event.tsv, tsquery)
-        similarity = func.similarity(Event.search_text, q)
+        similarity = func.similarity(_fold(Event.search_text), q)
         score = func.coalesce(rank, 0.0) * 0.7 + func.coalesce(similarity, 0.0) * 0.3
         like = f"%{q}%"
 
@@ -130,8 +141,8 @@ class EventRepository:
             or_(
                 Event.tsv.op("@@")(tsquery),
                 similarity > 0.05,
-                Event.title.ilike(like),
-                Event.description.ilike(like),
+                _fold(Event.title).like(like),
+                _fold(Event.description).like(like),
             )
         )
         return stmt.order_by(score.desc(), Event.created_at.desc()).limit(limit)
@@ -145,7 +156,7 @@ class EventRepository:
         end: Any | None = None,
         limit: int = 5,
     ) -> list[tuple[Event, float]]:
-        q = (query or "").strip()
+        q = (query or "").strip().casefold()
         if not q:
             stmt = self._search_query(user_id, q, event_type, start, end, limit)
             stmt = stmt.add_columns(literal(0.0).label("score"))
@@ -154,7 +165,7 @@ class EventRepository:
 
         tsquery = func.plainto_tsquery("russian", q)
         rank = func.coalesce(func.ts_rank_cd(Event.tsv, tsquery), 0.0)
-        similarity = func.coalesce(func.similarity(Event.search_text, q), 0.0)
+        similarity = func.coalesce(func.similarity(_fold(Event.search_text), q), 0.0)
         score = (rank * 0.7 + similarity * 0.3).label("score")
         stmt = self._search_query(user_id, q, event_type, start, end, limit).add_columns(score)
         result = await self.db.execute(stmt)

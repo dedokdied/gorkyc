@@ -18,14 +18,17 @@ export function SearchBar({ busy, onSearch }: Props) {
         }
       }}
     >
+      <span className="search-bar__icon" aria-hidden="true">
+        ⌕
+      </span>
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Найти задачу, встречу или заметку"
         aria-label="Поисковый запрос"
       />
-      <button className="button" type="submit" disabled={busy || !query.trim()}>
-        {busy ? "Поиск..." : "Найти"}
+      <button className="button button--primary" type="submit" disabled={busy || !query.trim()}>
+        {busy ? "Ищу…" : "Найти"}
       </button>
     </form>
   );

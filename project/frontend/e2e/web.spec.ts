@@ -1,15 +1,42 @@
 ﻿import { expect, test, type Page } from "@playwright/test";
 
-const demoUser = `e2e-${process.env.E2E_RUN_ID ?? Date.now()}`;
-const runSuffix = demoUser.slice(-8);
+const runId = process.env.E2E_RUN_ID ?? String(Date.now());
+const account = {
+  email: `e2e-${runId}@example.com`,
+  password: "e2e-password-123",
+  display_name: "E2E",
+};
+const runSuffix = runId.slice(-8);
+
+let accessToken = "";
 
 test.describe.configure({ mode: "serial" });
 
+test.beforeAll(async ({ request }) => {
+  const registered = await request.post("/api/v1/auth/register", { data: account });
+  if (registered.ok()) {
+    accessToken = (await registered.json()).access_token;
+    return;
+  }
+
+  if (registered.status() !== 409) {
+    throw new Error(`register failed: ${registered.status()} ${await registered.text()}`);
+  }
+
+  const loggedIn = await request.post("/api/v1/auth/login", {
+    data: { email: account.email, password: account.password },
+  });
+  if (!loggedIn.ok()) {
+    throw new Error(`login failed: ${loggedIn.status()} ${await loggedIn.text()}`);
+  }
+  accessToken = (await loggedIn.json()).access_token;
+});
+
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript((user) => {
-    localStorage.setItem("voice-assistant-demo-user", user);
+  await page.addInitScript((token) => {
+    localStorage.setItem("gorky-auth-token", token);
     localStorage.removeItem("voice-assistant-session-id");
-  }, demoUser);
+  }, accessToken);
   await page.goto("/");
 });
 
@@ -37,8 +64,8 @@ test("clarification answer creates a meeting", async ({ page }) => {
 
   const clarification = page.locator(".clarification");
   await expect(clarification).toBeVisible();
-  await page.locator(".clarification__form input").fill("В 15:00");
-  await page.locator('.clarification__form button[type="submit"]').click();
+  await page.locator(".composer input").fill("В 15:00");
+  await page.locator('.composer button[type="submit"]').click();
   await expect(clarification).toBeHidden();
   await expect(page.locator(".chat__messages .message").last()).toContainText("Готово");
 
@@ -73,9 +100,9 @@ test("editor converts the selected timezone to UTC", async ({ page }) => {
   await page.locator('.event-editor button[type="submit"]').click();
 
   const dueAt = await page.evaluate(async (eventTitle) => {
-    const user = localStorage.getItem("voice-assistant-demo-user") ?? "demo";
+    const token = localStorage.getItem("gorky-auth-token");
     const response = await fetch("/api/v1/events", {
-      headers: { "X-Demo-User": user },
+      headers: { Authorization: `Bearer ${token}` },
     });
     const items = (await response.json()) as Array<{ title: string; due_at: string | null }>;
     return items.find((item) => item.title === eventTitle)?.due_at ?? null;
@@ -92,6 +119,30 @@ test("search finds a chat-created event", async ({ page }) => {
   await expect(
     page.locator(".event-card", { hasText: "позвонить Ивану" }),
   ).toBeVisible();
+});
+
+test("auth screen is shown without a token", async ({ page }) => {
+  await page.addInitScript(() => localStorage.removeItem("gorky-auth-token"));
+  await page.reload();
+
+  await expect(
+    page.getByRole("heading", { name: /Скажи\.\s*Я запомню\./ }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Регистрация" })).toBeVisible();
+});
+
+test("registration through the UI opens the workspace", async ({ page }) => {
+  await page.addInitScript(() => localStorage.removeItem("gorky-auth-token"));
+  await page.reload();
+
+  await page.getByRole("tab", { name: "Регистрация" }).click();
+  await page.getByLabel("Имя").fill("Новый пользователь");
+  await page.getByLabel("Email").fill(`ui-${runId}@example.com`);
+  await page.getByLabel("Пароль").fill("ui-password-123");
+  await page.getByRole("button", { name: /Создать аккаунт/ }).click();
+
+  await expect(page.getByRole("heading", { name: "Ассистент" })).toBeVisible();
+  await expect(page.locator(".topbar__user")).toContainText("Новый пользователь");
 });
 
 test.describe("mobile", () => {

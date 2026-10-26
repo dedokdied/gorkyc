@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 EventType = Literal["task", "meeting", "reminder"]
 EventPeriod = Literal["today", "tomorrow", "week", "upcoming", "all"]
+Recurrence = Literal["daily", "weekly", "monthly"]
 
 
 class CreateEventArgs(BaseModel):
@@ -14,6 +15,7 @@ class CreateEventArgs(BaseModel):
     time_expression: str | None = None
     duration_expression: str | None = None
     description: str | None = None
+    recurrence: Recurrence | None = None
 
 
 class UpdateEventArgs(BaseModel):
@@ -22,6 +24,7 @@ class UpdateEventArgs(BaseModel):
     time_expression: str | None = None
     duration_expression: str | None = None
     description: str | None = None
+    recurrence: Recurrence | None = None
 
 
 class EventIdArgs(BaseModel):

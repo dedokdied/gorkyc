@@ -50,6 +50,8 @@ async def main() -> None:
                 BotCommand(command="tomorrow", description="Планы на завтра"),
                 BotCommand(command="week", description="Планы на неделю"),
                 BotCommand(command="search", description="Поиск по записям"),
+                BotCommand(command="link", description="Связать с сайтом"),
+                BotCommand(command="settings", description="Часовой пояс"),
                 BotCommand(command="cancel", description="Отменить уточнение"),
                 BotCommand(command="help", description="Что я умею"),
             ]

@@ -65,7 +65,7 @@ app/
 | Клиент | Как работает |
 |---|---|
 | Telegram-бот | `telegram_bot/` → `/chat`, `/voice` с `X-Telegram-Id` и `X-Bot-Secret` |
-| Web | React → тот же API с `X-Demo-User: demo` |
+| Web | React → `/auth/*`, затем тот же API с `Authorization: Bearer <token>` |
 
 Бот не дублирует бизнес-логику: только Telegram UI и вызовы API.
 
@@ -138,8 +138,9 @@ class DatetimeParser(Protocol):
 - Любое изменение DTO — через PR в `docs/api/README.md`.
 - Схема БД управляется только Alembic. `Base.metadata.create_all` в runtime
   запрещён: он маскирует расхождения миграций.
-- `user_id` берётся из auth-контекста: `X-Telegram-Id` + `X-Bot-Secret` для
-  бота или `X-Demo-User` для web/demo; никогда из тела запроса.
+- `user_id` берётся из auth-контекста: `Authorization: Bearer` для web,
+  `X-Telegram-Id` + `X-Bot-Secret` для бота; `X-Demo-User` — только legacy/тесты
+  при `ALLOW_DEMO_AUTH=true`. Никогда из тела запроса.
 - Ошибки API возвращаются в конверте `{"error": {"code", "message",
   "request_id"}}`; `request_id` также пишется в `X-Request-ID` и логи.
 

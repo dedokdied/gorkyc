@@ -34,7 +34,7 @@ export function RecordButton({ disabled, onRecorded }: Props) {
         disabled={disabled || sending}
         onClick={() => void toggle()}
       >
-        {sending ? "Отправка..." : recording ? "Остановить" : "Голос"}
+        {sending ? "Отправка..." : recording ? "■ Остановить" : "● Голос"}
       </button>
       {recording && <span className="recorder__hint">Идёт запись</span>}
       {error && <span className="form-error">{error}</span>}

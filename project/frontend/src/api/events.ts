@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { EventCreate, EventItem, EventType } from "../types/api";
+import type { EventCreate, EventItem, EventPatch, EventType } from "../types/api";
 
 export interface EventQuery {
   from?: string;
@@ -25,6 +25,13 @@ export function createEvent(payload: EventCreate): Promise<EventItem> {
 
 export function completeEvent(id: string): Promise<EventItem> {
   return apiRequest<EventItem>(`/events/${id}/complete`, { method: "POST" });
+}
+
+export function updateEvent(id: string, payload: EventPatch): Promise<EventItem> {
+  return apiRequest<EventItem>(`/events/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function deleteEvent(id: string): Promise<void> {

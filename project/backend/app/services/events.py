@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any, NoReturn
 from uuid import UUID
@@ -56,6 +57,21 @@ def _build_search_text(title: str, description: str | None) -> str:
 
 def _minutes_between(starts_at: datetime, ends_at: datetime) -> int:
     return max(1, int((ends_at - starts_at).total_seconds() // 60))
+
+
+def _next_occurrence(value: datetime, recurrence: str | None) -> datetime | None:
+    """Advance a timestamp by one recurrence step, keeping wall-clock time."""
+
+    if recurrence == "daily":
+        return value + timedelta(days=1)
+    if recurrence == "weekly":
+        return value + timedelta(days=7)
+    if recurrence == "monthly":
+        year = value.year + (value.month // 12)
+        month = value.month % 12 + 1
+        day = min(value.day, calendar.monthrange(year, month)[1])
+        return value.replace(year=year, month=month, day=day)
+    return None
 
 
 def _as_create(data: EventCreate | dict | Any) -> EventCreate:
@@ -302,7 +318,50 @@ class EventService:
         event.updated_at = datetime.now(UTC)
         await self.repo.update(event)
         await self.db.commit()
+
+        next_event = self._build_next_occurrence(event)
+        if next_event is not None:
+            try:
+                await self.repo.create(next_event)
+                await self.db.commit()
+            except IntegrityError:
+                # The next meeting can overlap an existing one. Completion is
+                # already committed, so only the follow-up instance is lost.
+                await self.db.rollback()
         return event_to_read(event)
+
+    @staticmethod
+    def _build_next_occurrence(event: Event) -> Event | None:
+        recurrence = (event.recurrence or "").lower()
+        if recurrence not in {"daily", "weekly", "monthly"}:
+            return None
+
+        if event.starts_at is None and event.due_at is None:
+            return None
+
+        next_starts = _next_occurrence(event.starts_at, recurrence) if event.starts_at else None
+        next_ends = _next_occurrence(event.ends_at, recurrence) if event.ends_at else None
+        next_due = _next_occurrence(event.due_at, recurrence) if event.due_at else None
+        if next_starts is None and next_due is None:
+            return None
+
+        return Event(
+            user_id=event.user_id,
+            type=event.type,
+            status=ModelEventStatus.planned,
+            title=event.title,
+            description=event.description,
+            starts_at=next_starts,
+            ends_at=next_ends,
+            due_at=next_due,
+            duration_minutes=event.duration_minutes,
+            timezone=event.timezone,
+            source=event.source,
+            recurrence=event.recurrence,
+            parent_id=event.parent_id or event.id,
+            metadata_=dict(event.metadata_ or {}),
+            search_text=_build_search_text(event.title, event.description),
+        )
 
     async def delete(self, user_id: UUID, event_id: UUID) -> None:
         event = await self.repo.get(_uid(user_id), _uid(event_id))

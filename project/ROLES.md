@@ -126,7 +126,8 @@ GET        /healthz, /readyz
 
 Правила:
 
-- `user_id` берётся из `X-Telegram-Id`/`X-Demo-User`, не из тела запроса.
+- `user_id` берётся из `Authorization: Bearer` (web), `X-Telegram-Id` (бот) или
+  legacy `X-Demo-User`, не из тела запроса.
 - Telegram-бот передаёт `X-Bot-Secret`; снаружи API не доступен.
 - LLM передаёт `time_expression`, а не ISO-даты.
 - Ошибки — кодами, без SQL и stack trace.

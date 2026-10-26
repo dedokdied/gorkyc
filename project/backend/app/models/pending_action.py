@@ -57,6 +57,13 @@ class PendingAction(Base):
         default=True,
         server_default=text("true"),
     )
+    question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    options: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'::text[]"),
+    )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

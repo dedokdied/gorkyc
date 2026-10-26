@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -36,6 +37,13 @@ class ChatResponse(BaseModel):
     action: ActionInfo | None = None
     clarification: Clarification | None = None
     audio_url: str | None = None
+
+
+class ChatHistoryMessage(BaseModel):
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
 
 
 class VoiceResponse(ChatResponse):

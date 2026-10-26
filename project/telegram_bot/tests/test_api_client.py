@@ -267,14 +267,12 @@ async def test_mock_search_filters_events() -> None:
 @pytest.mark.asyncio
 async def test_list_events_unwraps_items() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["status"] == "planned"
+        assert "status" not in request.url.params
         return httpx.Response(
             200,
-            json={
-                "items": [
-                    {"id": "event-1", "title": "Позвонить Ивану"},
-                ]
-            },
+            json=[
+                {"id": "event-1", "title": "Позвонить Ивану"},
+            ],
         )
 
     async with httpx.AsyncClient(

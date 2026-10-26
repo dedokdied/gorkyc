@@ -38,10 +38,15 @@ def test_welcome_keyboard_has_start_and_examples() -> None:
 def test_main_menu_has_create_and_plans() -> None:
     buttons = [button for row in main_menu_keyboard().inline_keyboard for button in row]
 
-    assert [button.text for button in buttons] == ["➕ Сделать задачу", "📅 Мои планы"]
+    assert [button.text for button in buttons] == [
+        "➕ Сделать задачу",
+        "📅 Мои планы",
+        "🔗 Связать с сайтом",
+    ]
     assert [button.callback_data for button in buttons] == [
         "onboarding:create",
         "onboarding:plans",
+        "link:code",
     ]
 
 
@@ -86,6 +91,7 @@ def test_main_menu_is_attached_to_every_reply() -> None:
     assert [button.callback_data for button in buttons] == [
         "onboarding:create",
         "onboarding:plans",
+        "link:code",
     ]
 
 
@@ -100,6 +106,7 @@ def test_main_menu_keeps_clarification_options() -> None:
         "clarify:pending-1:1",
         "onboarding:create",
         "onboarding:plans",
+        "link:code",
     ]
 
 

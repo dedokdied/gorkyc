@@ -1,7 +1,9 @@
 import type { ApiErrorPayload } from "../types/api";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/$/, "");
-const DEMO_USER_KEY = "voice-assistant-demo-user";
+const TOKEN_KEY = "gorky-auth-token";
+
+export const UNAUTHORIZED_EVENT = "gorky:unauthorized";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -15,17 +17,29 @@ export class ApiError extends Error {
   }
 }
 
-export function getDemoUser(): string {
-  return localStorage.getItem(DEMO_USER_KEY) || import.meta.env.VITE_DEMO_USER || "demo";
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setDemoUser(value: string): void {
-  localStorage.setItem(DEMO_USER_KEY, value.trim() || "demo");
+export function setAuthToken(value: string): void {
+  localStorage.setItem(TOKEN_KEY, value);
+}
+
+export function clearAuthToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+function notifyUnauthorized(): void {
+  clearAuthToken();
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("X-Demo-User", getDemoUser());
+  const token = getAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   if (init.body !== undefined && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -42,6 +56,11 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     } catch {
       // The server may return an empty body for infrastructure errors.
     }
+
+    if (response.status === 401 && token) {
+      notifyUnauthorized();
+    }
+
     throw new ApiError(
       response.status,
       payload.error?.code ?? "http_error",

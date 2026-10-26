@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -14,4 +15,6 @@ class Message(Base):
     session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     role: Mapped[str] = mapped_column(String, nullable=False, default="user")
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tool_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tool_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

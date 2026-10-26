@@ -168,6 +168,69 @@ class ApiClient:
                 events.append(event)
         return events
 
+    async def create_link_code(
+        self,
+        telegram_id: int,
+        *,
+        telegram_username: str | None = None,
+    ) -> dict[str, Any]:
+        if self._settings.bot_mock_mode:
+            return {"code": "00000", "expires_in_seconds": 600}
+
+        data = await self._request(
+            "POST",
+            "/telegram/link-code",
+            telegram_id=telegram_id,
+            telegram_username=telegram_username,
+        )
+        return data if isinstance(data, dict) else {}
+
+    async def get_me(
+        self,
+        telegram_id: int,
+        *,
+        telegram_username: str | None = None,
+    ) -> dict[str, Any]:
+        if self._settings.bot_mock_mode:
+            return {"display_name": "demo", "timezone": self._settings.app_tz}
+        data = await self._request(
+            "GET",
+            "/auth/me",
+            telegram_id=telegram_id,
+            telegram_username=telegram_username,
+        )
+        return data if isinstance(data, dict) else {}
+
+    async def update_profile(
+        self,
+        telegram_id: int,
+        *,
+        timezone: str | None = None,
+        display_name: str | None = None,
+        onboarding_seen: bool | None = None,
+        telegram_username: str | None = None,
+    ) -> dict[str, Any]:
+        if self._settings.bot_mock_mode:
+            return {
+                "display_name": display_name or "demo",
+                "timezone": timezone or self._settings.app_tz,
+            }
+        payload: dict[str, Any] = {}
+        if timezone is not None:
+            payload["timezone"] = timezone
+        if display_name is not None:
+            payload["display_name"] = display_name
+        if onboarding_seen is not None:
+            payload["onboarding_seen"] = onboarding_seen
+        data = await self._request(
+            "PATCH",
+            "/auth/me",
+            telegram_id=telegram_id,
+            telegram_username=telegram_username,
+            json=payload,
+        )
+        return data if isinstance(data, dict) else {}
+
     async def answer_clarification(
         self,
         telegram_id: int,
@@ -208,8 +271,6 @@ class ApiClient:
         params = {
             "from": start,
             "to": end,
-            "status": "planned",
-            "limit": 100,
         }
         data = await self._request(
             "GET",

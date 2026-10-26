@@ -4,9 +4,10 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
-from app.api_client import ApiClient
+from app.api_client import ApiClient, BackendError
 from app.config import Settings
 from app.handlers.events import send_period
+from app.identity import username_from_user
 from app.keyboards import (
     back_keyboard,
     main_menu_keyboard,
@@ -46,6 +47,38 @@ async def on_examples(callback: CallbackQuery, state: FSMContext) -> None:
             EXAMPLES,
             reply_markup=main_menu_keyboard(),
         )
+
+
+@router.callback_query(F.data == "link:code")
+async def on_link(callback: CallbackQuery, state: FSMContext, api: ApiClient) -> None:
+    await callback.answer()
+    await clear_clarification(state)
+    if callback.from_user is None or callback.message is None:
+        return
+    try:
+        data = await api.create_link_code(
+            callback.from_user.id,
+            telegram_username=username_from_user(callback.from_user),
+        )
+    except BackendError as exc:
+        await callback.message.answer(exc.user_message, reply_markup=main_menu_keyboard())
+        return
+
+    code = str(data.get("code") or "")
+    if not code:
+        await callback.message.answer(
+            "Не получилось создать код. Попробуйте ещё раз.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    await callback.message.answer(
+        "Код для входа на сайт:\n\n"
+        f"<b>{code}</b>\n\n"
+        "Введите его в профиле на сайте. Код действует 10 минут.",
+        parse_mode="HTML",
+        reply_markup=main_menu_keyboard(),
+    )
 
 
 @router.callback_query(F.data == "onboarding:create")

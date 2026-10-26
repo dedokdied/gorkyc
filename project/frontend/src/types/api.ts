@@ -25,9 +25,22 @@ export interface EventCreate {
   title: string;
   description?: string | null;
   starts_at?: string | null;
+  ends_at?: string | null;
   due_at?: string | null;
   duration_minutes?: number | null;
   timezone: string;
+  recurrence?: string | null;
+}
+
+export interface EventPatch {
+  title?: string;
+  description?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  due_at?: string | null;
+  duration_minutes?: number | null;
+  timezone?: string;
+  recurrence?: string | null;
 }
 
 export interface ActionInfo {
@@ -51,6 +64,13 @@ export interface ChatResponse {
   audio_url: string | null;
 }
 
+export interface ChatHistoryMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
 export interface VoiceResponse extends ChatResponse {
   transcript: string;
 }
@@ -69,5 +89,6 @@ export interface ApiErrorPayload {
   error?: {
     code?: string;
     message?: string;
+    request_id?: string;
   };
 }

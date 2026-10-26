@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     reminders_enabled: bool = True
     reminders_interval_seconds: float = 30.0
     web_origin: str = "http://localhost:5173"
+    web_auth_secret: str = "dev-only-change-me"
+    web_token_ttl_seconds: int = 604800
+    allow_demo_auth: bool = True
     enable_vector_search: bool = False
     enable_rerank: bool = False
     embeddings_provider: str = "off"

@@ -17,6 +17,20 @@ def _validate_timezone(value: str) -> str:
     return value
 
 
+RECURRENCE_VALUES = {"daily", "weekly", "monthly"}
+
+
+def _validate_recurrence(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"none", "no", "once", ""}:
+        return None
+    if normalized not in RECURRENCE_VALUES:
+        raise ValueError("invalid_recurrence")
+    return normalized
+
+
 class EventCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +56,11 @@ class EventCreate(BaseModel):
     @classmethod
     def _check_timezone(cls, value: str) -> str:
         return _validate_timezone(value)
+
+    @field_validator("recurrence")
+    @classmethod
+    def _check_recurrence(cls, value: str | None) -> str | None:
+        return _validate_recurrence(value)
 
     @model_validator(mode="after")
     def _validate_slots(self) -> "EventCreate":
@@ -97,6 +116,11 @@ class EventPatch(BaseModel):
         if value is None:
             return None
         return _validate_timezone(value)
+
+    @field_validator("recurrence")
+    @classmethod
+    def _check_recurrence(cls, value: str | None) -> str | None:
+        return _validate_recurrence(value)
 
     @model_validator(mode="after")
     def _validate_patch(self) -> "EventPatch":

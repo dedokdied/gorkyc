@@ -103,6 +103,7 @@ class DbToolExecutor:
             "title": args.title,
             "description": args.description,
             "timezone": timezone,
+            "recurrence": args.recurrence,
         }
 
         if args.type == "meeting":
@@ -158,6 +159,8 @@ class DbToolExecutor:
             patch["title"] = args.title
         if args.description is not None:
             patch["description"] = args.description
+        if args.recurrence is not None:
+            patch["recurrence"] = args.recurrence
 
         parsed = self._parse(args.time_expression, timezone)
         if parsed is not None:

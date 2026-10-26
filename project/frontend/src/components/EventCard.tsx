@@ -6,6 +6,12 @@ const TYPE_LABELS: Record<EventItem["type"], string> = {
   reminder: "Напоминание",
 };
 
+const TYPE_CODES: Record<EventItem["type"], string> = {
+  task: "T",
+  meeting: "M",
+  reminder: "R",
+};
+
 const STATUS_LABELS: Record<EventItem["status"], string> = {
   planned: "Запланировано",
   done: "Выполнено",
@@ -27,6 +33,7 @@ interface Props {
   event: EventItem;
   onComplete?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onEdit?: (event: EventItem) => void;
   busy?: boolean;
   snippet?: string;
   score?: number;
@@ -36,6 +43,7 @@ export function EventCard({
   event,
   onComplete,
   onDelete,
+  onEdit,
   busy = false,
   snippet,
   score,
@@ -45,24 +53,38 @@ export function EventCard({
   return (
     <article className={`event-card event-card--${event.type}`}>
       <header className="event-card__header">
-        <span className="event-card__type">{TYPE_LABELS[event.type]}</span>
+        <span className="event-card__type">
+          <span className="event-card__code">{TYPE_CODES[event.type]}</span>
+          {TYPE_LABELS[event.type]}
+        </span>
         <span className={`event-card__status event-card__status--${event.status}`}>
           {STATUS_LABELS[event.status]}
         </span>
       </header>
       <h3>{event.title}</h3>
-      {when && <p className="event-card__when">{when}</p>}
-      {!when && <p className="event-card__when">Без даты</p>}
+      <p className="event-card__when">{when ?? "Без даты"}</p>
       {snippet && <p className="event-card__snippet">{snippet}</p>}
       {event.description && <p className="event-card__description">{event.description}</p>}
       {score !== undefined && (
-        <p className="event-card__score">Релевантность: {score.toFixed(2)}</p>
+        <p className="event-card__score">
+          релевантность <span>{score.toFixed(2)}</span>
+        </p>
       )}
-      {(onComplete || onDelete) && (
+      {(onComplete || onDelete || onEdit) && (
         <footer className="event-card__actions">
+          {onEdit && (
+            <button
+              className="button button--small button--ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => onEdit(event)}
+            >
+              Изменить
+            </button>
+          )}
           {onComplete && event.status === "planned" && (
             <button
-              className="button button--small"
+              className="button button--small button--primary"
               type="button"
               disabled={busy}
               onClick={() => onComplete(event.id)}

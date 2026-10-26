@@ -125,7 +125,7 @@ class Assistant:
         session = session_id or str(uuid4())
         history = [
             {"role": item["role"], "content": item["content"]}
-            for item in await self._history.get(user_id)
+            for item in await self._history.get(user_id, session)
             if item.get("role") in {"user", "assistant"} and item.get("content")
         ]
         messages: list[dict[str, Any]] = [
@@ -143,7 +143,7 @@ class Assistant:
                     reply=turn.content or "Готово.",
                     action=action,
                 )
-                await self._remember(user_id, text, response.reply)
+                await self._remember(user_id, session, text, response.reply)
                 return response
 
             messages.append(self._assistant_tool_message(turn.content, turn.tool_calls))
@@ -181,7 +181,7 @@ class Assistant:
                             missing=exc.missing,
                         ),
                     )
-                    await self._remember(user_id, text, response.reply)
+                    await self._remember(user_id, session, text, response.reply)
                     return response
 
                 action = self._action_from_result(call.name, result)
@@ -199,7 +199,7 @@ class Assistant:
             reply="Не смог обработать запрос. Попробуй переформулировать.",
             action=action,
         )
-        await self._remember(user_id, text, response.reply)
+        await self._remember(user_id, session, text, response.reply)
         return response
 
     async def answer_clarification(
@@ -217,7 +217,7 @@ class Assistant:
                 session_id=session_id or str(uuid4()),
                 reply="Это уточнение уже неактуально. Напиши запрос заново.",
             )
-        if pending.user_id != user_id:
+        if str(pending.user_id) != str(user_id):
             # Another account must not be able to consume someone else's
             # question just by guessing its id.
             await self._pending.save(pending)
@@ -286,7 +286,7 @@ class Assistant:
                     missing=exc.missing,
                 ),
             )
-            await self._remember(user_id, text, response.reply)
+            await self._remember(user_id, pending.session_id, text, response.reply)
             return response
 
         response = ChatResponse(
@@ -294,7 +294,7 @@ class Assistant:
             reply=self._reply_for_result(pending.intent, result),
             action=self._action_from_result(pending.intent, result),
         )
-        await self._remember(user_id, text, response.reply)
+        await self._remember(user_id, pending.session_id, text, response.reply)
         return response
 
     @staticmethod
@@ -391,10 +391,16 @@ class Assistant:
     async def _remember(
         self,
         user_id: str,
+        session_id: str,
         user_text: str,
         assistant_text: str,
     ) -> None:
-        await self._history.append(user_id, user_text, assistant_text)
+        await self._history.append(user_id, session_id, user_text, assistant_text)
+
+    async def clear_history(self, user_id: str, session_id: str | None) -> None:
+        if session_id:
+            await self._history.clear(user_id, session_id)
+            await self._pending.clear_session(user_id, session_id)
 
     async def _execute_tool(
         self,

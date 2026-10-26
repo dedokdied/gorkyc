@@ -6,6 +6,7 @@ Telegram MVP и веб-версия работают на одном backend, о
 - Полный план: [`../PLAN.md`](../PLAN.md)
 - Журнал изменений и текущее состояние: [`DEVLOG.md`](DEVLOG.md)
 - API-контракт: [`docs/api/README.md`](docs/api/README.md)
+- Web-версия: [`docs/web.md`](docs/web.md)
 - Сценарий демо: [`docs/demo.md`](docs/demo.md)
 - Роли и границы: [`ROLES.md`](ROLES.md)
 - Решения: [`docs/decisions/`](docs/decisions/)
@@ -17,11 +18,17 @@ Telegram MVP и веб-версия работают на одном backend, о
 - Telegram: онбординг с меню, текст, голос, inline-уточнения, напоминания.
 - Данные разделены по пользователю: бот использует Telegram-аккаунт
   (`from_user.id`), а не `chat.id`; события и поиск фильтруются по `user_id`.
-- Ассистент помнит последние 4 сообщения диалога и свои уточняющие вопросы.
-- Web: чат, таймлайн, поиск, карточки, редактирование, голосовой ввод,
-  мобильная вёрстка.
+- Ассистент помнит последние 12 сообщений диалога; полная история хранится в
+  PostgreSQL и переживает рестарт и перезагрузку страницы.
+- Web: регистрация и вход по email/паролю, чат, таймлайн, поиск, голосовой
+  ввод, профиль с привязкой Telegram и таймзоной, in-app напоминания,
+  монохромная мобильная вёрстка.
 - Поиск: FTS `russian` + `pg_trgm` (падежи и опечатки).
-- Напоминания: worker в backend + `TelegramNotifier`.
+- Напоминания: worker в backend + `TelegramNotifier` и баннер на сайте
+  (`/reminders/inbox`).
+- Повторяющиеся события: `daily`, `weekly`, `monthly`; следующий экземпляр
+  создаётся при завершении.
+- Персистентные уточнения: `pending_actions` и история диалога в PostgreSQL.
 - CI: backend, bot, frontend build и Playwright e2e.
 - Импорт CSV-корпуса и seed демо-данных.
 
@@ -32,7 +39,8 @@ Telegram MVP и веб-версия работают на одном backend, о
 - **LLM:** OpenAI-compatible API; fallback `RuleBasedLLM`.
 - **Telegram:** aiogram 3.x, long polling.
 - **Голос:** Whisper API; локальный faster-whisper — опция. TTS отложен.
-- **Frontend:** React 18 + TypeScript + Vite.
+- **Frontend:** React 18 + TypeScript + Vite, чистый CSS.
+- **Web-auth:** email + password, PBKDF2, HMAC access token.
 - **Инфраструктура:** Docker Compose, nginx, GitHub Actions.
 
 ## Быстрый старт
@@ -78,9 +86,9 @@ npm ci
 npm run dev
 ```
 
-Открой `http://localhost:5173`. Vite проксирует `/api` на
-`http://127.0.0.1:8000`. Demo-пользователя можно переключить в шапке; по
-умолчанию — `demo`.
+Открой `http://localhost:5173`, зарегистрируй аккаунт и создай первое
+событие. Vite проксирует `/api` на `http://127.0.0.1:8000`. Подробности о
+веб-версии, стеке и дизайне — в [`docs/web.md`](docs/web.md).
 
 ### Telegram-бот
 
@@ -205,9 +213,9 @@ project/
 
 ## Правила разработки
 
-- `user_id` берётся только из auth-контекста: `X-Telegram-Id` +
-  `X-Bot-Secret` для бота или `X-Demo-User` для web. Не из тела запроса и не
-  из аргументов LLM.
+- `user_id` берётся только из auth-контекста: `Authorization: Bearer` для web,
+  `X-Telegram-Id` + `X-Bot-Secret` для бота. `X-Demo-User` — только legacy/тесты
+  при `ALLOW_DEMO_AUTH=true`. Не из тела запроса и не из аргументов LLM.
 - Backend не импортирует aiogram, кроме `TelegramNotifier`.
 - Бот не содержит SQL и бизнес-логики.
 - LLM не считает даты: серверный `DatetimeParser` превращает
@@ -220,11 +228,12 @@ project/
 
 - `pgvector` в демо-окружении недоступен: работает FTS + trigram, векторный
   поиск выключен (`docs/decisions/0004-vector-search-deferred.md`).
-- TTS не реализован (`TTS_PROVIDER=none`).
-- `PendingActionStore` и история диалога in-memory; после рестарта
-  незавершённые уточнения и последние сообщения теряются.
-- Авторизация веб-версии — demo-заголовок `X-Demo-User`; JWT и разделение
-  аккаунтов запланированы на потом (см. `DEVLOG.md`).
+- TTS не реализован (`TTS_PROVIDER=none`), голосовые функции отложены.
+- `PendingActionStore` и история диалога хранятся в PostgreSQL; после рестарта
+  уточнения и сообщения сохраняются.
+- Web-auth — прототип: email/пароль и access-token в localStorage; refresh-
+  токенов, подтверждения email и отзыва сессий пока нет.
+- `X-Demo-User` оставлен для обратной совместимости тестов; в production
+  выключается через `ALLOW_DEMO_AUTH=false`.
 - Для production нужны реальные `TELEGRAM_BOT_TOKEN`, `LLM_API_KEY` и
   `STT_API_KEY`; без них доступны rule-based ответы и mock-режим бота.
-- Docker-образы описаны, но локально не собирались (Docker не установлен).

@@ -4,9 +4,10 @@ import {
   createEvent,
   deleteEvent,
   listEvents,
+  updateEvent,
   type EventQuery,
 } from "../api/events";
-import type { EventCreate, EventItem } from "../types/api";
+import type { EventCreate, EventItem, EventPatch } from "../types/api";
 
 export type EventRange = "today" | "week" | "upcoming" | "all";
 
@@ -81,5 +82,14 @@ export function useEvents(range: EventRange, refreshKey: number) {
     [reload],
   );
 
-  return { events, loading, error, reload, create, complete, remove };
+  const update = useCallback(
+    async (id: string, payload: EventPatch) => {
+      const event = await updateEvent(id, payload);
+      await reload();
+      return event;
+    },
+    [reload],
+  );
+
+  return { events, loading, error, reload, create, update, complete, remove };
 }

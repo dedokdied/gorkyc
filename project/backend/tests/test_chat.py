@@ -14,7 +14,11 @@ from app.schemas.tools import (
     UpdateEventArgs,
 )
 from app.services.assistant import Assistant, ClarificationNeeded
-from app.services.dialogue import InMemoryPendingActionStore, PendingAction
+from app.services.dialogue import (
+    InMemoryConversationStore,
+    InMemoryPendingActionStore,
+    PendingAction,
+)
 
 
 class FakeTools:
@@ -293,11 +297,13 @@ async def test_assistant_keeps_last_four_messages_in_context() -> None:
         llm=llm,
         tools=FakeTools(),
         pending=InMemoryPendingActionStore(),
+        history=InMemoryConversationStore(max_messages=4),
     )
 
-    await assistant.handle("user-1", "Первое сообщение")
-    await assistant.handle("user-1", "Второе сообщение")
-    await assistant.handle("user-1", "Третье сообщение")
+    session_id = "session-1"
+    await assistant.handle("user-1", "Первое сообщение", session_id=session_id)
+    await assistant.handle("user-1", "Второе сообщение", session_id=session_id)
+    await assistant.handle("user-1", "Третье сообщение", session_id=session_id)
 
     dialogue = [
         message["content"]

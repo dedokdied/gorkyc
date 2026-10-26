@@ -125,8 +125,12 @@ async def resolve_user(
     secret: str | None,
     demo_user: str | None,
     telegram_username: str | None = None,
+    authorization: str | None = None,
 ) -> str:
     del telegram_username
+    if authorization:
+        assert authorization == "Bearer token-1"
+        return "token-user"
     if telegram_id is None:
         return demo_user or "demo"
     assert telegram_id == 42
@@ -171,6 +175,20 @@ def test_chat_route_defaults_to_demo_user() -> None:
 
     assert response.status_code == 200
     assert assistant.calls[0]["user_id"] == "demo"
+
+
+def test_chat_route_passes_bearer_token_to_resolver() -> None:
+    assistant = StubAssistant()
+    client = make_chat_client(assistant)
+
+    response = client.post(
+        "/chat",
+        json={"text": "создай встречу"},
+        headers={"Authorization": "Bearer token-1"},
+    )
+
+    assert response.status_code == 200
+    assert assistant.calls[0]["user_id"] == "token-user"
 
 
 def test_clarification_route_passes_answer() -> None:

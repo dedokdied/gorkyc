@@ -20,7 +20,7 @@
   - `backend/app/api/deps.py` — авторизация и `user_id`.
   - `telegram_bot/app/handlers/` — `/start`, онбординг, текст, голос, события.
   - `telegram_bot/app/identity.py` — Telegram-аккаунт vs chat id.
-  - `frontend/src/` — веб-демо.
+  - `frontend/src/` — веб-клиент.
 - **Команды:**
   ```bash
   cd project/backend && .venv/Scripts/python -m pytest -q
@@ -30,23 +30,90 @@
 - **Секреты:** только в `project/.env` и `project/SECRETS.local.md`, в git не
   попадают. Не печатать значения в логах и ответах.
 
-## Текущее состояние (2026-10-24)
+## Текущее состояние (2026-10-26)
 
-- Telegram MVP работает: текст, голос, создание/список/поиск/уточнения,
-  напоминания.
-- Веб-демо работает на том же API: чат, таймлайн, поиск, голосовой ввод.
+- Telegram MVP работает: текст, создание/список/поиск/уточнения, напоминания,
+  `/link` и `/settings`.
+- Веб-версия: регистрация/вход, чат, таймлайн, поиск, профиль с таймзоной,
+  in-app напоминания, редактирование и повтор событий.
+- История диалога и `pending_actions` хранятся в PostgreSQL и переживают
+  рестарт backend и перезагрузку страницы.
+- Web-auth: PBKDF2-хеш пароля, HMAC access-token, `Authorization: Bearer`.
+  `X-Demo-User` оставлен только для legacy/тестов.
 - Данные разделены по `user_id`: `events.user_id` + фильтры в репозиториях.
 - Бот определяет пользователя по `message.from_user.id` (аккаунт Telegram), а
   не по `chat.id`; `@username` сохраняется только для отображения.
-- LLM получает последние 4 сообщения диалога и видит свои уточняющие вопросы.
+- LLM получает последние 12 сообщений диалога; полная история — в `messages`.
 - Ответ текстом на уточнение попадает в pending-action, а не создаёт новый
   запрос.
-- Первый экран `/start`: «Начать» / «Примеры», затем «Сделать задачу» /
-  «Мои планы».
-- Backend: 30 тестов без БД проходят; 24 теста требуют PostgreSQL. Bot: 20
-  тестов проходят. Frontend: сборка проверялась ранее, изменений нет.
+- Голосовые функции отложены: `STT_PROVIDER=none`, `TTS_PROVIDER=none`.
 
 ## Журнал изменений
+
+### 2026-10-26 — Напоминания на сайте, редактирование, повтор, таймзона
+
+**Добавили:**
+- `DbPendingActionStore`: уточнения теперь в PostgreSQL, очищаются вместе с
+  чатом.
+- In-app напоминания: `GET /reminders/inbox`, `POST /reminders/{id}/ack`,
+  баннер и polling на фронтенде.
+- Редактирование события в таймлайне (`PATCH /events/{id}`) и повтор
+  `daily`/`weekly`/`monthly`; при `complete` создаётся следующий экземпляр.
+- `PATCH /auth/me` (имя, таймзона, onboarding), выбор таймзоны в профиле и
+  использование сохранённой таймзоны в чате; `/settings` в боте.
+- Alias истории `GET|DELETE /sessions/{id}/messages` к `/chat/history`.
+- `onboarding_seen` перенесён из MemoryStorage в `users`.
+- Схема выровнена: `sessions.channel/external_id`, `messages.tool_name/
+  tool_payload`, `pending_actions.question/options`, `events.web_ack_at`.
+
+**Проверили:**
+- Backend: `107 passed` (PostgreSQL, миграции через `Base.metadata.create_all`).
+- Bot: `28 passed`.
+- Frontend: `npm run build` и Playwright e2e `8 passed`.
+- Миграция `0007_schema_align` применяется при старте контейнера.
+- Живые endpoint'ы: `PATCH /auth/me`, `GET /reminders/inbox`,
+  `POST /reminders/{id}/ack`, `GET|DELETE /sessions/{id}/messages`.
+- Найдено и исправлено: `pending_actions.user_id` из БД — строка, а endpoint
+  получал `UUID`; сравнение всегда было истинным, поэтому любое уточнение
+  считалось чужим. Теперь идентификаторы сравниваются как строки.
+
+**Осталось:**
+- Голос (STT/TTS) — отложен.
+- Публичная демо-ссылка/деплой.
+
+### 2026-10-25 — Web-версия: аккаунты, монохромный UI, ASCII-робот
+
+**Добавлено**
+
+- `backend/app/core/security.py`: PBKDF2-SHA256 для паролей, HMAC-SHA256
+  access-токены без внешних зависимостей.
+- `backend/app/api/auth.py`, `backend/app/schemas/auth.py`: регистрация,
+  вход, `/auth/me`, stateless logout.
+- Миграция `0004_web_auth`: `users.password_hash`.
+- `backend/app/api/deps.py`: `Authorization: Bearer` как основной web-auth;
+  `get_authenticated_user` для `/auth/me`; `ALLOW_DEMO_AUTH` для legacy.
+- `/chat` и `/voice` прокидывают Bearer-токен в резолвер пользователя.
+- Frontend: экран входа/регистрации, `useAuth`, auth-клиент, ASCII-робот,
+  полностью новый чёрно-белый интерфейс, адаптив.
+- E2E переведён с demo-заголовка на реальный аккаунт и токен.
+- Документация: `docs/web.md`, обновлены README, API-контракт и
+  `.env.example`.
+
+**Проверено**
+
+- `python -m compileall app tests` — синтаксис.
+- `ruff check app tests` — без замечаний.
+- 51 backend-тест без PostgreSQL — проходят.
+- `npm run build` — production-сборка проходит (Node 22, Vite 6).
+- Backend auth-тесты добавлены; запуск требует PostgreSQL.
+
+**Осталось**
+
+- Прогнать полный backend pytest с PostgreSQL и Playwright e2e.
+- Refresh-токены, httpOnly cookie, отзыв сессий.
+- Персистентность истории диалога и pending-actions.
+- Веб-напоминания (in-app/Web Push).
+- Редактирование события в UI.
 
 ### 2026-10-24 — MVP: пользователи, онбординг, контекст диалога
 

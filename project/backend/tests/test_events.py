@@ -23,13 +23,13 @@ async def test_create_task_and_get(client):
         description="Позвонить Ивану",
         due_at="2026-10-23T10:00:00+03:00",
         timezone="Europe/Moscow",
-        recurrence="RRULE:FREQ=DAILY;COUNT=1",
+        recurrence="daily",
     )
     assert created["title"] == "Проверить договор"
     assert created["type"] == "task"
     assert created["status"] == "planned"
     assert created["source"] == "text"
-    assert created["recurrence"] == "RRULE:FREQ=DAILY;COUNT=1"
+    assert created["recurrence"] == "daily"
     assert created["due_at"] == "2026-10-23T10:00:00+03:00"
 
     response = await client.get(f"/api/v1/events/{created['id']}")

@@ -64,7 +64,7 @@ class ReminderService:
 
         async with self._session_factory() as db:
             stmt = (
-                select(Event, User.openclaw_peer_id)
+                select(Event, User.openclaw_peer_id, User.telegram_id)
                 .join(User, User.id == Event.user_id)
                 .where(
                     Event.type == EventType.reminder,
@@ -79,8 +79,8 @@ class ReminderService:
             )
             rows: list[Any] = list((await db.execute(stmt)).all())
 
-            for event, peer_id in rows:
-                telegram_id = telegram_id_from_peer(peer_id)
+            for event, peer_id, linked_telegram_id in rows:
+                telegram_id = linked_telegram_id or telegram_id_from_peer(peer_id)
                 if telegram_id is None:
                     logger.warning(
                         "reminder_without_telegram_user",
