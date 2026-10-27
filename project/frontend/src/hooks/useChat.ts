@@ -81,21 +81,24 @@ export function useChat(onEventChanged?: () => void, timezone?: string) {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string): Promise<ChatResponse | null> => {
       const trimmed = text.trim();
       if (!trimmed || loading) {
-        return;
+        return null;
       }
 
       append({ id: newId(), role: "user", text: trimmed });
       setLoading(true);
       setError(null);
       try {
-        applyResponse(await sendChat(trimmed, sessionId, timezone));
+        const response = await sendChat(trimmed, sessionId, timezone);
+        applyResponse(response);
+        return response;
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Ошибка запроса";
         setError(message);
         append({ id: newId(), role: "assistant", text: `Ошибка: ${message}` });
+        return null;
       } finally {
         setLoading(false);
       }
@@ -104,10 +107,10 @@ export function useChat(onEventChanged?: () => void, timezone?: string) {
   );
 
   const answer = useCallback(
-    async (text: string) => {
+    async (text: string): Promise<ChatResponse | null> => {
       const trimmed = text.trim();
       if (!trimmed || !clarification || loading) {
-        return;
+        return null;
       }
 
       append({ id: newId(), role: "user", text: trimmed });
@@ -122,10 +125,12 @@ export function useChat(onEventChanged?: () => void, timezone?: string) {
         );
         setClarification(null);
         applyResponse(response);
+        return response;
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Ошибка запроса";
         setError(message);
         append({ id: newId(), role: "assistant", text: `Ошибка: ${message}` });
+        return null;
       } finally {
         setLoading(false);
       }

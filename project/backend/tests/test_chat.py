@@ -375,6 +375,13 @@ def test_system_prompt_forbids_button_hints() -> None:
     assert "не предлагай нажимать кнопки" in prompt
 
 
+def test_system_prompt_requires_russian_only() -> None:
+    prompt = Assistant._system_prompt("Europe/Moscow").lower()
+
+    assert "исключительно на русском" in prompt
+    assert "никогда не переходи на английский" in prompt
+
+
 def _pending_with_time(expression: str | None) -> PendingAction:
     return PendingAction(
         id="pending-1",
@@ -580,3 +587,99 @@ async def test_rule_based_flow_creates_event_and_phrases_result() -> None:
     assert response.action.name == "create_event"
     assert response.reply == "Готово."
     assert tools.events[0]["type"] == "reminder"
+
+
+class ErrorTools(FakeTools):
+    async def create_event(
+        self,
+        user_id: str,
+        args: CreateEventArgs,
+        timezone: str,
+    ) -> dict[str, Any]:
+        del user_id, args, timezone
+        return {
+            "error": "meeting_overlap",
+            "message": "На это время уже есть встреча.",
+        }
+
+
+@pytest.mark.asyncio
+async def test_failed_action_is_not_reported_as_done() -> None:
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(
+                type="meeting",
+                title="Встреча с Иваном",
+                time_expression="завтра в 15:00",
+            ),
+            LLMTurn(content="Готово."),
+        ),
+        tools=ErrorTools(),
+        pending=InMemoryPendingActionStore(),
+    )
+
+    response = await assistant.handle("user-1", "Добавь встречу с Иваном завтра в 15:00")
+
+    assert response.reply == "На это время уже есть встреча."
+    assert response.action is not None
+    assert response.action.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_english_tomorrow_from_llm_does_not_loop_clarification() -> None:
+    tools = FakeTools(require_time=True)
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(
+                type="meeting",
+                title="Встреча с Иваном",
+                time_expression="tomorrow",
+            ),
+        ),
+        tools=tools,
+        pending=InMemoryPendingActionStore(),
+    )
+
+    response = await assistant.handle("user-1", "Поставь встречу с Иваном завтра")
+    assert response.clarification is not None
+
+    updated = await assistant.answer_clarification(
+        "user-1",
+        response.clarification.id,
+        "15:00",
+    )
+
+    assert updated.clarification is None
+    assert updated.reply == "Готово: Встреча с Иваном."
+    started = datetime.fromisoformat(tools.events[0]["starts_at"])
+    assert (started.hour, started.minute) == (15, 0)
+
+
+@pytest.mark.asyncio
+async def test_clarification_stops_when_date_is_still_missing() -> None:
+    tools = FakeTools(require_time=True)
+    assistant = Assistant(
+        llm=ScriptedLLM(
+            create_call(
+                type="meeting",
+                title="Встреча с Иваном",
+                time_expression="когда-нибудь",
+            ),
+        ),
+        tools=tools,
+        pending=InMemoryPendingActionStore(),
+    )
+
+    first = await assistant.handle("user-1", "Поставь встречу с Иваном когда-нибудь")
+    assert first.clarification is not None
+
+    second = await assistant.answer_clarification(
+        "user-1",
+        first.clarification.id,
+        "в 16:00",
+    )
+
+    assert second.clarification is None
+    assert "Не понял дату" in second.reply
+    assert tools.events == []
+

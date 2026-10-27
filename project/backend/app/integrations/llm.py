@@ -18,6 +18,7 @@ from app.schemas.tools import (
     SearchEventsArgs,
     UpdateEventArgs,
 )
+from app.services.datetime_parser import DatetimeParser
 
 
 @dataclass(slots=True)
@@ -61,7 +62,12 @@ TOOL_SCHEMAS = [
     _tool("update_event", "Изменить существующее событие", UpdateEventArgs),
     _tool("complete_event", "Отметить событие выполненным", EventIdArgs),
     _tool("delete_event", "Удалить событие", EventIdArgs),
-    _tool("list_events", "Показать события за период", ListEventsArgs),
+    _tool(
+        "list_events",
+        "Показать события за период: today, tomorrow, week, upcoming, all. "
+        "Для произвольного периода передавай date_from и date_to (YYYY-MM-DD)",
+        ListEventsArgs,
+    ),
     _tool("search_events", "Найти события по тексту", SearchEventsArgs),
     _tool("ask_clarification", "Задать уточняющий вопрос", AskClarificationArgs),
     _tool("get_current_datetime", "Получить текущую дату и время", GetCurrentDatetimeArgs),
@@ -180,6 +186,43 @@ class FallbackLLM:
 
 
 class RuleBasedLLM:
+    # Service words the user says around the actual task. Stripped from the
+    # title so the fallback does not store «Добавь встречу с командой завтра
+    # в 15:00» as the event name.
+    _LEADING = re.compile(
+        r"^\s*(?:пожалуйста,?\s*)?(?:"
+        r"напомни(?:те)?(?:\s+мне)?|"
+        r"добавь(?:те)?|поставь(?:те)?|создай(?:те)?|"
+        r"запланируй(?:те)?|запиши(?:те)?|сделай(?:те)?|"
+        r"нужно|надо|необходимо|"
+        r"встречу|встреча|задачу|задача|заметку|заметка|напоминание"
+        r")\b\s*",
+        re.IGNORECASE,
+    )
+
+    _LEADING_DATE = re.compile(
+        r"^\s*(?:(?:в|во|на|к|до)\s+)?(?:"
+        r"сегодня|завтра|послезавтра|"
+        r"понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье|"
+        r"(?:следующ\w*|эту|текущ\w*)\s+недел\w*|"
+        r"(?:до|к)\s+конц\w*\s+недел\w*|"
+        r"через\s+\S+(?:\s+\S+)?|"
+        r"\d{1,2}(?::\d{2})?\s*(?:утра|вечера|дня|ночи)"
+        r")\s*[,:]?\s*",
+        re.IGNORECASE,
+    )
+
+    _TRAILING_DATE = re.compile(
+        r"\s+(?:"
+        r"(?:сегодня|завтра|послезавтра)(?:\s+в\s+\d{1,2}(?::\d{2})?)?|"
+        r"(?:в|во|к)\s+\d{1,2}(?::\d{2})?(?:\s+(?:утра|вечера|дня|ночи))?|"
+        r"через\s+\S+(?:\s+\S+)?|"
+        r"(?:на\s+)?(?:следующ\w*|эту|текущ\w*)\s+недел\w*|"
+        r"(?:до|к)\s+конц\w*\s+недел\w*"
+        r")\s*$",
+        re.IGNORECASE,
+    )
+
     async def complete(
         self,
         messages: list[dict[str, Any]],
@@ -194,7 +237,18 @@ class RuleBasedLLM:
 
         # Read-only commands must win over creation words: «покажи заметки»
         # contains «заметк», but it is a list request, not a new note.
-        if any(word in lowered for word in ("что у меня", "покажи", "список", "какие")):
+        if any(
+            word in lowered
+            for word in (
+                "что у меня",
+                "покажи",
+                "список",
+                "какие",
+                "запланировано",
+                "есть ли у меня",
+                "есть у меня",
+            )
+        ):
             if "завтра" in lowered:
                 period = "tomorrow"
             elif "недел" in lowered:
@@ -205,7 +259,18 @@ class RuleBasedLLM:
                 period = "all"
             else:
                 period = "today"
-            return self._call("list_events", {"period": period, "limit": 20})
+            arguments: dict[str, Any] = {"period": period, "limit": 20}
+            if "встреч" in lowered:
+                arguments["type"] = "meeting"
+            elif "напомин" in lowered:
+                arguments["type"] = "reminder"
+            elif "задач" in lowered or "заметк" in lowered:
+                arguments["type"] = "task"
+            date_range = DatetimeParser().parse_range(text)
+            if date_range is not None:
+                arguments["date_from"] = date_range[0].isoformat()
+                arguments["date_to"] = date_range[1].isoformat()
+            return self._call("list_events", arguments)
         if "найди" in lowered or "поищи" in lowered or "поиск" in lowered:
             return self._call(
                 "search_events",
@@ -216,7 +281,7 @@ class RuleBasedLLM:
                 "create_event",
                 {
                     "type": "reminder",
-                    "title": text,
+                    "title": self._clean_title(text, "reminder"),
                     "time_expression": text,
                 },
             )
@@ -225,7 +290,7 @@ class RuleBasedLLM:
                 "create_event",
                 {
                     "type": "task",
-                    "title": self._note_title(text),
+                    "title": self._clean_title(text, "task"),
                     "time_expression": text,
                 },
             )
@@ -234,7 +299,16 @@ class RuleBasedLLM:
                 "create_event",
                 {
                     "type": "meeting",
-                    "title": text,
+                    "title": self._clean_title(text, "meeting"),
+                    "time_expression": text,
+                },
+            )
+        if re.search(r"\b(?:нужно|надо|необходимо)\b", lowered):
+            return self._call(
+                "create_event",
+                {
+                    "type": "task",
+                    "title": self._clean_title(text, "task"),
                     "time_expression": text,
                 },
             )
@@ -253,6 +327,28 @@ class RuleBasedLLM:
             flags=re.IGNORECASE,
         ).strip()
         return query or text
+
+    @classmethod
+    def _clean_title(cls, text: str, kind: str) -> str:
+        """Turn a full command into a short event title."""
+        title = text.strip(" .,!?:;")
+        for _ in range(4):
+            updated = cls._LEADING.sub("", title, count=1)
+            updated = cls._LEADING_DATE.sub("", updated, count=1)
+            if updated == title:
+                break
+            title = updated
+        for _ in range(4):
+            updated = cls._TRAILING_DATE.sub("", title, count=1).strip(" .,!?:;")
+            if updated == title:
+                break
+            title = updated
+        title = title.strip()
+        if not title:
+            return text
+        if kind == "meeting" and re.match(r"^с\s+", title, re.IGNORECASE):
+            title = "Встреча " + title
+        return title[:1].upper() + title[1:]
 
     @staticmethod
     def _note_title(text: str) -> str:

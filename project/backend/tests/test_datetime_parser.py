@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -140,6 +140,68 @@ def test_unknown_expression_does_not_invent_a_date(parser):
     assert parsed.confidence == 0.0
 
 
+def test_english_tomorrow_from_llm_arguments(parser):
+    # Providers sometimes normalize «завтра» to «tomorrow» inside tool args.
+    parsed = parser.parse("tomorrow в 16:00", TZ, NOW)
+    assert parsed.starts_at == datetime(2026, 10, 23, 16, 0, tzinfo=ZoneInfo(TZ))
+    assert parsed.is_ambiguous is False
+
+
+def test_english_weekday_and_relative_duration(parser):
+    parsed = parser.parse("friday", TZ, NOW)
+    assert parsed.starts_at.date().isoformat() == "2026-10-23"
+
+    relative = parser.parse("in 2 hours", TZ, NOW)
+    assert relative.starts_at == datetime(2026, 10, 22, 14, 0, tzinfo=ZoneInfo(TZ))
+
+
 def test_invalid_timezone(parser):
     with pytest.raises(ValueError, match="invalid_timezone"):
         parser.parse("завтра", "No/Such_Zone", NOW)
+
+
+def test_range_with_month_at_the_end(parser):
+    assert parser.parse_range("с 3 по 7 ноября", TZ, NOW) == (
+        date(2026, 11, 3),
+        date(2026, 11, 7),
+    )
+
+
+def test_range_with_month_on_both_sides(parser):
+    assert parser.parse_range("с 28 октября по 3 ноября", TZ, NOW) == (
+        date(2026, 10, 28),
+        date(2026, 11, 3),
+    )
+
+
+def test_range_with_dash(parser):
+    assert parser.parse_range("3–7 ноября", TZ, NOW) == (
+        date(2026, 11, 3),
+        date(2026, 11, 7),
+    )
+
+
+def test_range_keeps_recent_past_in_current_year(parser):
+    # NOW is 22 October: listing a recent past range should not jump a year.
+    assert parser.parse_range("с 1 по 5 октября", TZ, NOW) == (
+        date(2026, 10, 1),
+        date(2026, 10, 5),
+    )
+
+
+def test_range_far_in_the_past_means_next_year(parser):
+    assert parser.parse_range("с 3 по 7 января", TZ, NOW) == (
+        date(2027, 1, 3),
+        date(2027, 1, 7),
+    )
+
+
+def test_range_with_explicit_year(parser):
+    assert parser.parse_range("с 3 по 7 ноября 2027", TZ, NOW) == (
+        date(2027, 11, 3),
+        date(2027, 11, 7),
+    )
+
+
+def test_range_rejects_unknown_text(parser):
+    assert parser.parse_range("ерунда какая-то", TZ, NOW) is None

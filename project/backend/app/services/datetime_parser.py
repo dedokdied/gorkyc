@@ -79,28 +79,40 @@ _WEEKDAYS = {
 _MONTHS = {
     "января": 1,
     "январь": 1,
+    "январе": 1,
     "февраля": 2,
     "февраль": 2,
+    "феврале": 2,
     "марта": 3,
     "март": 3,
+    "марте": 3,
     "апреля": 4,
     "апрель": 4,
+    "апреле": 4,
     "мая": 5,
     "май": 5,
+    "мае": 5,
     "июня": 6,
     "июнь": 6,
+    "июне": 6,
     "июля": 7,
     "июль": 7,
+    "июле": 7,
     "августа": 8,
     "август": 8,
+    "августе": 8,
     "сентября": 9,
     "сентябрь": 9,
+    "сентябре": 9,
     "октября": 10,
     "октябрь": 10,
+    "октябре": 10,
     "ноября": 11,
     "ноябрь": 11,
+    "ноябре": 11,
     "декабря": 12,
     "декабрь": 12,
+    "декабре": 12,
 }
 
 _WORD_NUMBERS = {
@@ -144,6 +156,79 @@ _DURATION_MARKERS = re.compile(r"\b(на|через|в течение|длите
 
 def _normalize(text: str) -> str:
     return " ".join((text or "").lower().replace("ё", "е").strip().split())
+
+
+_FOREIGN_DATES = (
+    (re.compile(r"\bday after tomorrow\b"), "послезавтра"),
+    (re.compile(r"\btomorrow\b"), "завтра"),
+    (re.compile(r"\btoday\b"), "сегодня"),
+    (re.compile(r"\byesterday\b"), "вчера"),
+    (re.compile(r"\bnext week\b"), "на следующей неделе"),
+    (re.compile(r"\bthis week\b"), "на этой неделе"),
+)
+
+_FOREIGN_WEEKDAYS = {
+    "monday": "понедельник",
+    "tuesday": "вторник",
+    "wednesday": "среду",
+    "thursday": "четверг",
+    "friday": "пятницу",
+    "saturday": "субботу",
+    "sunday": "воскресенье",
+}
+
+_FOREIGN_NUMBERS = {
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+    "eleven": "11",
+    "twelve": "12",
+}
+
+_FOREIGN_UNITS = {
+    "minute": "минуту",
+    "minutes": "минут",
+    "hour": "час",
+    "hours": "часа",
+    "day": "день",
+    "days": "дня",
+    "week": "неделю",
+    "weeks": "недели",
+}
+
+_FOREIGN_RELATIVE = re.compile(
+    r"\bin\s+(\d+|"
+    + "|".join(_FOREIGN_NUMBERS)
+    + r")\s+(minutes?|hours?|days?|weeks?)\b"
+)
+
+
+def _translate_foreign_dates(text: str) -> str:
+    """Translate English relative dates the LLM may put into tool arguments.
+
+    The model is asked to keep time_expression in Russian, but a provider can
+    still normalize «завтра» to «tomorrow». Treating those tokens as Russian
+    keeps the clarification flow working instead of asking the same question
+    forever.
+    """
+    lowered = (text or "").lower()
+    for pattern, replacement in _FOREIGN_DATES:
+        lowered = pattern.sub(replacement, lowered)
+    for name, russian in _FOREIGN_WEEKDAYS.items():
+        lowered = re.sub(rf"\b{name}\b", russian, lowered)
+
+    def _relative(match: re.Match[str]) -> str:
+        amount = _FOREIGN_NUMBERS.get(match.group(1), match.group(1))
+        return f"через {amount} {_FOREIGN_UNITS[match.group(2)]}"
+
+    return _FOREIGN_RELATIVE.sub(_relative, lowered)
 
 
 def _tz(timezone: str) -> ZoneInfo:
@@ -336,6 +421,77 @@ def _parse_explicit_date(text: str, now: datetime) -> date | None:
     return None
 
 
+_RANGE_WITH_PREPOSITION = re.compile(
+    r"\b(?:с|со)\s+(\d{1,2})(?:\s+([а-я]+))?(?:\s+(\d{4}))?"
+    r"\s*(?:по|до)\s*(\d{1,2})(?:\s+([а-я]+))?(?:\s+(\d{4}))?"
+)
+
+_RANGE_WITH_DASH = re.compile(
+    r"\b(\d{1,2})\s*(?:-|–|—)\s*(\d{1,2})\s+([а-я]+)(?:\s+(\d{4}))?"
+)
+
+
+def _range_dates(text: str, now: datetime) -> tuple[date, date] | None:
+    """Parse a closed date range: «с 3 по 7 ноября», «3–7 ноября»."""
+    start_day: int | None = None
+    end_day: int | None = None
+    start_month: int | None = None
+    end_month: int | None = None
+    year: int | None = None
+    explicit_year = False
+
+    match = _RANGE_WITH_PREPOSITION.search(text)
+    if match:
+        start_day = int(match.group(1))
+        start_month = _MONTHS.get(match.group(2) or "")
+        end_day = int(match.group(4))
+        end_month = _MONTHS.get(match.group(5) or "")
+        raw_year = match.group(3) or match.group(6)
+        if raw_year:
+            year = int(raw_year)
+            explicit_year = True
+    else:
+        match = _RANGE_WITH_DASH.search(text)
+        if not match:
+            return None
+        start_day = int(match.group(1))
+        end_day = int(match.group(2))
+        end_month = _MONTHS.get(match.group(3))
+        if match.group(4):
+            year = int(match.group(4))
+            explicit_year = True
+
+    # «с 3 по 7 ноября» — месяц указан один раз в конце.
+    if start_month is None:
+        start_month = end_month
+    if end_month is None:
+        end_month = start_month
+    if start_day is None or end_day is None or not start_month or not end_month:
+        return None
+
+    if year is None:
+        year = now.year
+    try:
+        start = date(year, start_month, start_day)
+        end_year = year + (1 if end_month < start_month else 0)
+        end = date(end_year, end_month, end_day)
+    except ValueError:
+        return None
+    if end < start:
+        return None
+
+    # Без года далёкое прошлое считаем ближайшим будущим: «с 3 по 7 января»
+    # в октябре — это январь следующего года, а «с 1 по 5 октября» остаётся
+    # текущим годом, чтобы можно было смотреть недавнюю историю.
+    if not explicit_year and end < now.date() - timedelta(days=60):
+        try:
+            start = start.replace(year=start.year + 1)
+            end = end.replace(year=end.year + 1)
+        except ValueError:
+            return None
+    return start, end
+
+
 def _parse_date_keyword(text: str, now: datetime) -> tuple[date, bool] | None:
     if re.search(r"\bпослезавтра\b", text):
         return now.date() + timedelta(days=2), False
@@ -428,7 +584,7 @@ class DatetimeParser:
         else:
             now = _to_aware(now, tz)
         now = now.astimezone(zone)
-        text = _normalize(expression)
+        text = _normalize(_translate_foreign_dates(expression))
 
         if not text:
             return ParsedTime(is_ambiguous=True, confidence=0.0)
@@ -601,6 +757,23 @@ class DatetimeParser:
     def parse_date(self, expression, tz="Europe/Moscow", now=None):
         return self.parse(expression, tz, now).date
 
+    def parse_range(
+        self,
+        expression: str,
+        tz: str = "Europe/Moscow",
+        now: datetime | None = None,
+    ) -> tuple[date, date] | None:
+        """Return inclusive (start, end) dates for a range expression."""
+        zone = _tz(tz)
+        if now is None:
+            now = datetime.now(zone)
+        else:
+            now = _to_aware(now, tz).astimezone(zone)
+        text = _normalize(_translate_foreign_dates(expression))
+        if not text:
+            return None
+        return _range_dates(text, now)
+
     def parse_datetime(self, expression, tz="Europe/Moscow", now=None):
         return self.parse(expression, tz, now)
 
@@ -617,3 +790,7 @@ def parse_datetime(expression, tz="Europe/Moscow", now=None):
 
 def parse_date(expression, tz="Europe/Moscow", now=None):
     return DatetimeParser().parse(expression, tz, now).date
+
+
+def parse_range(expression, tz="Europe/Moscow", now=None):
+    return DatetimeParser().parse_range(expression, tz, now)

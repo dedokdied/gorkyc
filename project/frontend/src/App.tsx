@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { AuthScreen } from "./components/AuthScreen";
+import { ModePicker } from "./components/ModePicker";
 import { ReminderBanner } from "./components/ReminderBanner";
 import { useAuth } from "./hooks/useAuth";
 import { useReminders } from "./hooks/useReminders";
@@ -7,6 +8,11 @@ import { ChatPage } from "./pages/ChatPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SearchPage } from "./pages/SearchPage";
 import { TimelinePage } from "./pages/TimelinePage";
+import {
+  getStoredMode,
+  setStoredMode,
+  type AssistantMode,
+} from "./store/mode";
 import type { AuthUser } from "./types/auth";
 
 type Tab = "chat" | "timeline" | "search" | "profile";
@@ -44,10 +50,23 @@ function Workspace({
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [mode, setMode] = useState<AssistantMode>(() => getStoredMode() ?? "text");
+  const [pickerOpen, setPickerOpen] = useState(true);
   const { reminders, dismiss } = useReminders();
 
   const onEventChanged = useCallback(() => {
     setRefreshKey((value) => value + 1);
+  }, []);
+
+  const changeMode = useCallback((next: AssistantMode) => {
+    setMode(next);
+    setStoredMode(next);
+  }, []);
+
+  const selectInitialMode = useCallback((next: AssistantMode) => {
+    setMode(next);
+    setStoredMode(next);
+    setPickerOpen(false);
   }, []);
 
   return (
@@ -88,7 +107,12 @@ function Workspace({
       <main className="app-main" key={user.id}>
         <ReminderBanner reminders={reminders} onDismiss={(id) => void dismiss(id)} />
         {tab === "chat" && (
-          <ChatPage onEventChanged={onEventChanged} timezone={user.timezone} />
+          <ChatPage
+            onEventChanged={onEventChanged}
+            timezone={user.timezone}
+            mode={mode}
+            onModeChange={changeMode}
+          />
         )}
         {tab === "timeline" && <TimelinePage refreshKey={refreshKey} />}
         {tab === "search" && <SearchPage />}
@@ -106,6 +130,10 @@ function Workspace({
         <span>Telegram + Web / один backend</span>
         <span>{user.email ?? "web account"}</span>
       </footer>
+
+      {pickerOpen && (
+        <ModePicker defaultMode={mode} onSelect={selectInitialMode} />
+      )}
     </div>
   );
 }

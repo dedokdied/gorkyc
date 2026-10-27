@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -33,6 +34,9 @@ class EventIdArgs(BaseModel):
 
 class ListEventsArgs(BaseModel):
     period: EventPeriod = "today"
+    type: EventType | None = None
+    date_from: date | None = None
+    date_to: date | None = None
     limit: int = Field(default=20, ge=1, le=100)
 
 

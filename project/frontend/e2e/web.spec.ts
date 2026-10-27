@@ -32,12 +32,20 @@ test.beforeAll(async ({ request }) => {
   accessToken = (await loggedIn.json()).access_token;
 });
 
+async function chooseTextMode(page: Page) {
+  const picker = page.locator(".mode-picker");
+  await expect(picker).toBeVisible();
+  await picker.getByRole("button", { name: /Текстовый режим/ }).click();
+  await expect(picker).toBeHidden();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((token) => {
     localStorage.setItem("gorky-auth-token", token);
     localStorage.removeItem("voice-assistant-session-id");
   }, accessToken);
   await page.goto("/");
+  await chooseTextMode(page);
 });
 
 async function sendChat(page: Page, text: string) {
@@ -56,6 +64,21 @@ test("chat creates a reminder and timeline shows it", async ({ page }) => {
   await expect(
     page.locator(".event-card", { hasText: "позвонить Ивану" }),
   ).toContainText("Напоминание");
+});
+
+test("voice mode opens a call without a text composer", async ({ page }) => {
+  await expect(page.getByRole("button", { name: "Надиктовать сообщение" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Звонок/ }).click();
+  const call = page.locator(".call");
+  await expect(call).toBeVisible();
+  await expect(call.locator(".call-wave")).toBeVisible();
+  await expect(call.locator("input")).toHaveCount(0);
+  await expect(call.locator("textarea")).toHaveCount(0);
+
+  await call.getByRole("button", { name: /Завершить/ }).click();
+  await expect(call).toBeHidden();
+  await expect(page.locator(".mode-switch__item--active")).toHaveText("Текст");
 });
 
 test("clarification answer creates a meeting", async ({ page }) => {
@@ -140,6 +163,7 @@ test("registration through the UI opens the workspace", async ({ page }) => {
   await page.getByLabel("Email").fill(`ui-${runId}@example.com`);
   await page.getByLabel("Пароль").fill("ui-password-123");
   await page.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await chooseTextMode(page);
 
   await expect(page.getByRole("heading", { name: "Ассистент" })).toBeVisible();
   await expect(page.locator(".topbar__user")).toContainText("Новый пользователь");

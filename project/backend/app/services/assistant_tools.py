@@ -234,12 +234,21 @@ class DbToolExecutor:
         timezone: str,
     ) -> list[dict[str, Any]]:
         start, end = self._period(args.period, timezone)
+        if args.date_from is not None or args.date_to is not None:
+            first = args.date_from or args.date_to
+            last = args.date_to or args.date_from
+            if last < first:
+                return [_error("period_end_before_start")]
+            zone = _zone(timezone)
+            start = datetime.combine(first, time.min, tzinfo=zone)
+            end = datetime.combine(last + timedelta(days=1), time.min, tzinfo=zone)
         async with SessionLocal() as db:
             try:
                 events = await EventService(db).list(
                     _as_uuid(user_id),
                     start=start,
                     end=end,
+                    type=args.type,
                     status="planned",
                 )
             except DomainValidationError as exc:

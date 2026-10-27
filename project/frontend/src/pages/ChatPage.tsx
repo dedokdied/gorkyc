@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChatMessage } from "../components/ChatMessage";
 import { Clarification } from "../components/Clarification";
-import { RecordButton } from "../components/RecordButton";
+import { VoiceCall } from "../components/VoiceCall";
+import { VoiceInputButton } from "../components/VoiceInputButton";
 import { useChat } from "../hooks/useChat";
+import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
+import type { AssistantMode } from "../store/mode";
 
 const EXAMPLES = [
   "Напомни завтра в 10 позвонить Ивану",
@@ -14,9 +18,13 @@ const EXAMPLES = [
 export function ChatPage({
   onEventChanged,
   timezone,
+  mode,
+  onModeChange,
 }: {
   onEventChanged: () => void;
   timezone?: string;
+  mode: AssistantMode;
+  onModeChange: (mode: AssistantMode) => void;
 }) {
   const {
     messages,
@@ -25,12 +33,14 @@ export function ChatPage({
     error,
     send,
     answer,
-    sendAudio,
     clear,
   } = useChat(onEventChanged, timezone);
   const [text, setText] = useState("");
+  const [callOpen, setCallOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const openedForModeRef = useRef(false);
+  const { speak, speaking, cancel } = useSpeechSynthesis();
 
   useEffect(() => {
     const container = messagesRef.current;
@@ -38,6 +48,22 @@ export function ChatPage({
       container.scrollTop = container.scrollHeight;
     }
   }, [messages, clarification]);
+
+  useEffect(() => {
+    if (mode === "voice" && !openedForModeRef.current) {
+      openedForModeRef.current = true;
+      setCallOpen(true);
+    }
+    if (mode === "text") {
+      openedForModeRef.current = false;
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === "text") {
+      cancel();
+    }
+  }, [cancel, mode]);
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -57,6 +83,20 @@ export function ChatPage({
     inputRef.current?.focus();
   }
 
+  function applyTranscript(next: string) {
+    setText(next);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function closeCall() {
+    setCallOpen(false);
+    onModeChange("text");
+  }
+
+  function voiceTurn(value: string) {
+    return clarification ? answer(value) : send(value);
+  }
+
   return (
     <section className="page page--chat">
       <header className="page-head">
@@ -65,10 +105,31 @@ export function ChatPage({
           <h1>Ассистент</h1>
           <p className="hint">Текст или голос — как удобнее. Я разберусь с деталями.</p>
         </div>
-        <span className="live-pill">
-          <span className="status-dot" />
-          {loading ? "слушаю" : "готов"}
-        </span>
+        <div className="page-head__actions">
+          <div className="mode-switch" role="group" aria-label="Режим общения">
+            <button
+              type="button"
+              className={`mode-switch__item ${mode === "text" ? "mode-switch__item--active" : ""}`}
+              aria-pressed={mode === "text"}
+              onClick={() => onModeChange("text")}
+            >
+              Текст
+            </button>
+            <button
+              type="button"
+              className={`mode-switch__item ${mode === "voice" ? "mode-switch__item--active" : ""}`}
+              aria-pressed={mode === "voice"}
+              onClick={() => onModeChange("voice")}
+            >
+              <span className="mode-switch__dot" aria-hidden="true" />
+              Звонок
+            </button>
+          </div>
+          <span className="live-pill">
+            <span className="status-dot" />
+            {loading ? "слушаю" : speaking ? "говорю" : "готов"}
+          </span>
+        </div>
       </header>
 
       <div className="chat-layout">
@@ -98,8 +159,8 @@ export function ChatPage({
                 <p className="empty-state__index">00 / 04</p>
                 <h2>Что планируем?</h2>
                 <p>
-                  Напишите задачу обычными словами. Можно добавить дату, время и
-                  детали — я соберу событие сам.
+                  Напишите задачу обычными словами или надиктуйте её микрофоном.
+                  Можно добавить дату, время и детали — я соберу событие сам.
                 </p>
                 <div className="prompt-list" aria-label="Примеры запросов">
                   {EXAMPLES.map((example) => (
@@ -117,12 +178,21 @@ export function ChatPage({
               </div>
             )}
             {messages.map((entry) => (
-              <ChatMessage key={entry.id} entry={entry} />
+              <ChatMessage
+                key={entry.id}
+                entry={entry}
+                onSpeak={(value) => void speak(value)}
+              />
             ))}
             {loading && (
               <p className="chat__typing">
                 <span className="status-dot" /> ассистент печатает…
               </p>
+            )}
+            {speaking && (
+              <button type="button" className="chat__speaking" onClick={cancel}>
+                <span className="status-dot" /> Горький говорит · остановить
+              </button>
             )}
           </div>
 
@@ -144,7 +214,7 @@ export function ChatPage({
               aria-label={clarification ? "Ответ на уточнение" : "Сообщение"}
               disabled={loading}
             />
-            <RecordButton disabled={loading} onRecorded={sendAudio} />
+            <VoiceInputButton disabled={loading} value={text} onChange={applyTranscript} />
             <button className="button button--primary" type="submit" disabled={loading || !text.trim()}>
               {clarification ? "Ответить" : "Отправить"} <span aria-hidden="true">↗</span>
             </button>
@@ -165,16 +235,27 @@ export function ChatPage({
                 <span>03</span> Искать старые записи по смыслу слов
               </li>
               <li>
-                <span>04</span> Уточнять время, если его не хватает
+                <span>04</span> Слушать голос и отвечать голосом
               </li>
             </ol>
           </div>
           <p className="aside-note">
-            Голосовой ввод работает в браузере. Если микрофон недоступен, просто
+            Голосовой ввод и озвучка работают прямо в браузере через Web Speech
+            API. Ничего не нужно устанавливать. Если микрофон недоступен — просто
             напишите текстом.
           </p>
         </aside>
       </div>
+
+      {createPortal(
+        <VoiceCall
+          open={callOpen && mode === "voice"}
+          greeting={clarification?.question ?? null}
+          onTurn={voiceTurn}
+          onClose={closeCall}
+        />,
+        document.body,
+      )}
     </section>
   );
 }

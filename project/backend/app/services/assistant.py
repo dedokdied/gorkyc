@@ -134,13 +134,24 @@ class Assistant:
             {"role": "user", "content": text},
         ]
         action: ActionInfo | None = None
+        last_error: str | None = None
 
         for _ in range(self._max_tool_rounds):
             turn = await self._llm.complete(messages, TOOL_SCHEMAS)
             if not turn.tool_calls:
+                reply = turn.content or "Готово."
+                if (
+                    last_error is not None
+                    and action is not None
+                    and action.status == "failed"
+                ):
+                    # The model sometimes answers «Готово.» even when the tool
+                    # returned a conflict or a validation error. Never confirm
+                    # an action that failed.
+                    reply = last_error
                 response = ChatResponse(
                     session_id=session,
-                    reply=turn.content or "Готово.",
+                    reply=reply,
                     action=action,
                 )
                 await self._remember(user_id, session, text, response.reply)
@@ -185,6 +196,12 @@ class Assistant:
                     return response
 
                 action = self._action_from_result(call.name, result)
+                if isinstance(result, dict) and result.get("error"):
+                    last_error = str(
+                        result.get("message") or "Не получилось выполнить действие."
+                    )
+                else:
+                    last_error = None
                 messages.append(
                     {
                         "role": "tool",
@@ -248,6 +265,26 @@ class Assistant:
             )
 
         args = self._merge_answer(pending, text, timezone)
+        if set(pending.missing) & {"starts_at", "due_at"}:
+            merged_expression = str(args.get("time_expression") or "")
+            merged_time = (
+                DatetimeParser().parse(merged_expression, timezone)
+                if merged_expression
+                else None
+            )
+            if merged_time is None or merged_time.date is None:
+                # The answer still has no date. Repeating the same question
+                # would loop forever, so ask explicitly for a full date/time.
+                response = ChatResponse(
+                    session_id=pending.session_id,
+                    reply=(
+                        "Не понял дату. Напиши, например: «завтра в 16:00» "
+                        "или «30 октября в 16:00»."
+                    ),
+                    action=ActionInfo(name=pending.intent, status="failed"),
+                )
+                await self._remember(user_id, pending.session_id, text, response.reply)
+                return response
         call = ToolCall(
             id=f"call-{uuid4()}",
             name=pending.intent,
@@ -511,12 +548,28 @@ class Assistant:
             "Ты ассистент задач и встреч. Учитывай историю диалога: если "
             "пользователь отвечает на твой предыдущий вопрос, используй "
             "контекст. Не считай даты самостоятельно: передавай исходное "
-            "выражение времени в time_expression. Не придумывай event_id. "
+            "выражение времени в time_expression. time_expression всегда "
+            "пиши дословно по-русски, как сказал пользователь: не переводи "
+            "его на английский и не заменяй относительные даты (никаких "
+            "«tomorrow», «today», «next week»). В title — только суть "
+            "события, без даты, времени и служебных слов вроде «добавь», "
+            "«поставь», «напомни». Если спрашивают про встречи, задачи или "
+            "напоминания, передавай соответствующий type в list_events. "
+            "Для произвольного периода («с 3 по 7 ноября») передавай в "
+            "list_events date_from и date_to в формате YYYY-MM-DD, считая "
+            "год по текущей дате. "
+            "Не придумывай event_id. "
             "Если не хватает обязательных полей, используй ask_clarification. "
             "Для создания события вызывай create_event с уже известными "
             "полями: недостающие поля сервер уточнит сам. Сохраняй текст "
             "заметки как есть и не отказывайся из-за грубых слов. Никогда не "
             "предлагай нажимать кнопки и не упоминай кнопки или интерфейс: "
-            "все вопросы задавай обычным текстом. Отвечай кратко, по-русски. "
+            "все вопросы задавай обычным текстом. Не используй markdown-"
+            "разметку (**...**, #, таблицы): только обычный текст и строки, "
+            "начинающиеся с «—». Отвечай кратко. Говори "
+            "ИСКЛЮЧИТЕЛЬНО на русском языке, даже если пользователь пишет или "
+            "говорит по-английски: никогда не переходи на английский, не "
+            "вставляй английские слова и фразы и не дублируй ответ переводом. "
+            "Латиницу используй только в неизбежных именах собственных. "
             f"Сейчас: {now}, таймзона: {timezone}."
         )

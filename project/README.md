@@ -15,14 +15,22 @@ Telegram MVP и веб-версия работают на одном backend, о
 ## Что готово
 
 - 4 обязательных сценария: создание, уточнение, список, поиск.
-- Telegram: онбординг с меню, текст, голос, inline-уточнения, напоминания.
+- Список: today / tomorrow / week / upcoming / all, фильтр по типу
+  (встречи, задачи, напоминания) и произвольный диапазон дат
+  («с 3 по 7 ноября»).
+- Прототип: <https://harshly-lucrative-flycatcher.cloudpub.ru>. Для проверки
+  достаточно зарегистрироваться по email; демо-пользователь `demo` с seed и
+  CSV-корпусом доступен через API (`X-Demo-User`).
+- Telegram: онбординг с меню, текст, голос (при настроенном STT),
+  inline-уточнения, напоминания.
 - Данные разделены по пользователю: бот использует Telegram-аккаунт
   (`from_user.id`), а не `chat.id`; события и поиск фильтруются по `user_id`.
 - Ассистент помнит последние 12 сообщений диалога; полная история хранится в
   PostgreSQL и переживает рестарт и перезагрузку страницы.
 - Web: регистрация и вход по email/паролю, чат, таймлайн, поиск, голосовой
-  ввод, профиль с привязкой Telegram и таймзоной, in-app напоминания,
-  монохромная мобильная вёрстка.
+  диалог (распознавание и озвучка ответов прямо в браузере), профиль с
+  привязкой Telegram и таймзоной, in-app напоминания, монохромная мобильная
+  вёрстка.
 - Поиск: FTS `russian` + `pg_trgm` (падежи и опечатки).
 - Напоминания: worker в backend + `TelegramNotifier` и баннер на сайте
   (`/reminders/inbox`).
@@ -38,7 +46,10 @@ Telegram MVP и веб-версия работают на одном backend, о
 - **БД:** PostgreSQL 16/17, FTS `russian`, `pg_trgm`, `btree_gist`.
 - **LLM:** OpenAI-compatible API; fallback `RuleBasedLLM`.
 - **Telegram:** aiogram 3.x, long polling.
-- **Голос:** Whisper API; локальный faster-whisper — опция. TTS отложен.
+- **Голос:** в вебе — Web Speech API (`SpeechRecognition` +
+  `speechSynthesis`), без серверных ключей; в Telegram — серверный STT
+  (Whisper API или локальный faster-whisper) по ключу. Серверный TTS не
+  подключён.
 - **Frontend:** React 18 + TypeScript + Vite, чистый CSS.
 - **Web-auth:** email + password, PBKDF2, HMAC access token.
 - **Инфраструктура:** Docker Compose, nginx, GitHub Actions.
@@ -228,7 +239,12 @@ project/
 
 - `pgvector` в демо-окружении недоступен: работает FTS + trigram, векторный
   поиск выключен (`docs/decisions/0004-vector-search-deferred.md`).
-- TTS не реализован (`TTS_PROVIDER=none`), голосовые функции отложены.
+- Серверный TTS не реализован (`TTS_PROVIDER=none`): в вебе ответ
+  озвучивает браузер, в Telegram голосовой ответ приходит текстом.
+- Голос в Telegram требует `STT_API_KEY` (или локального `faster-whisper`);
+  при `STT_PROVIDER=none` бот подсказывает перейти в текстовый режим.
+- Веб-голос работает только в браузерах с Web Speech API (Chrome, Edge,
+  Safari); в остальных доступен текстовый чат.
 - `PendingActionStore` и история диалога хранятся в PostgreSQL; после рестарта
   уточнения и сообщения сохраняются.
 - Web-auth — прототип: email/пароль и access-token в localStorage; refresh-
@@ -237,3 +253,19 @@ project/
   выключается через `ALLOW_DEMO_AUTH=false`.
 - Для production нужны реальные `TELEGRAM_BOT_TOKEN`, `LLM_API_KEY` и
   `STT_API_KEY`; без них доступны rule-based ответы и mock-режим бота.
+
+## Что улучшил бы дальше
+
+- **Надёжность LLM-слоя.** Сейчас при 429/таймауте включается rule-based
+  fallback, поэтому ответы становятся шаблонными. Нужны несколько
+  провайдеров, retry с backoff и кэш ответов.
+- **Голос в Telegram.** Подключить серверный STT/TTS и отвечать голосом, а не
+  только текстом; в вебе — потоковый синтез вместо браузерного.
+- **Проверка дат.** Добавить больше естественных формулировок и часовых
+  поясов, показывать «понял как …» перед созданием неоднозначного события.
+- **Напоминания.** Web Push и уведомления в Telegram по расписанию, а не
+  только in-app баннер при открытой вкладке.
+- **Качество поиска.** Включить pgvector и rerank, когда появится embedding-
+  провайдер; сейчас FTS + trigram.
+- **Эксплуатация.** Refresh-токены и httpOnly cookie, метрики, трассировка
+  запросов к LLM и алерты на рост ошибок.
