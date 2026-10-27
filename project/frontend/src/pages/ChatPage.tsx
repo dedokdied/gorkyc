@@ -20,11 +20,13 @@ export function ChatPage({
   timezone,
   mode,
   onModeChange,
+  onVoiceCallChange,
 }: {
   onEventChanged: () => void;
   timezone?: string;
   mode: AssistantMode;
   onModeChange: (mode: AssistantMode) => void;
+  onVoiceCallChange: (open: boolean) => void;
 }) {
   const {
     messages,
@@ -64,6 +66,16 @@ export function ChatPage({
       cancel();
     }
   }, [cancel, mode]);
+
+  useEffect(() => {
+    const open = callOpen && mode === "voice";
+    onVoiceCallChange(open);
+    return () => {
+      if (open) {
+        onVoiceCallChange(false);
+      }
+    };
+  }, [callOpen, mode, onVoiceCallChange]);
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -191,7 +203,7 @@ export function ChatPage({
             )}
             {speaking && (
               <button type="button" className="chat__speaking" onClick={cancel}>
-                <span className="status-dot" /> Горький говорит · остановить
+                <span className="status-dot" /> ЗапишИИ говорит · остановить
               </button>
             )}
           </div>
@@ -239,11 +251,6 @@ export function ChatPage({
               </li>
             </ol>
           </div>
-          <p className="aside-note">
-            Голосовой ввод и озвучка работают прямо в браузере через Web Speech
-            API. Ничего не нужно устанавливать. Если микрофон недоступен — просто
-            напишите текстом.
-          </p>
         </aside>
       </div>
 

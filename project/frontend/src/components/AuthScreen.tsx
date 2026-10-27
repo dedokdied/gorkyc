@@ -59,7 +59,7 @@ export function AuthScreen({ onLogin, onRegister }: Props) {
       <header className="auth-head">
         <span className="auth-brand">
           <span className="auth-brand__mark" aria-hidden="true" />
-          Горький
+          ЗапишИИ
         </span>
         <span className="auth-head__status">
           <span className="status-dot" aria-hidden="true" />
@@ -166,7 +166,7 @@ export function AuthScreen({ onLogin, onRegister }: Props) {
       </main>
 
       <footer className="auth-foot">
-        <span>Gorky Code / 2026</span>
+        <span>ЗапишИИ / 2026</span>
         <span>Telegram · Web</span>
       </footer>
     </div>

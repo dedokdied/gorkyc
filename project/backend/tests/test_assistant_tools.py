@@ -25,6 +25,40 @@ async def test_meeting_without_time_asks_for_time() -> None:
     assert exc_info.value.missing == ["starts_at"]
 
 
+@pytest.mark.asyncio
+async def test_task_with_date_but_without_time_asks_for_time() -> None:
+    executor = DbToolExecutor()
+
+    with pytest.raises(ClarificationNeeded) as exc_info:
+        await executor.create_event(
+            "00000000-0000-0000-0000-000000000001",
+            CreateEventArgs(
+                type="task",
+                title="Поесть",
+                time_expression="в пятницу",
+            ),
+            "Europe/Moscow",
+        )
+
+    assert exc_info.value.question == "Во сколько поставить задачу?"
+    assert exc_info.value.missing == ["due_at"]
+
+
+@pytest.mark.asyncio
+async def test_task_without_date_asks_for_date_and_time() -> None:
+    executor = DbToolExecutor()
+
+    with pytest.raises(ClarificationNeeded) as exc_info:
+        await executor.create_event(
+            "00000000-0000-0000-0000-000000000001",
+            CreateEventArgs(type="task", title="Поесть"),
+            "Europe/Moscow",
+        )
+
+    assert exc_info.value.question == "На когда поставить задачу? Назови дату и время."
+    assert exc_info.value.missing == ["due_at"]
+
+
 def test_period_week_starts_today() -> None:
     start, end = DbToolExecutor._period("week", "Europe/Moscow")
 

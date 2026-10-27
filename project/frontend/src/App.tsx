@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AuthScreen } from "./components/AuthScreen";
 import { ModePicker } from "./components/ModePicker";
 import { ReminderBanner } from "./components/ReminderBanner";
+import { TelegramPrompt } from "./components/TelegramPrompt";
 import { useAuth } from "./hooks/useAuth";
 import { useReminders } from "./hooks/useReminders";
 import { ChatPage } from "./pages/ChatPage";
@@ -13,6 +14,11 @@ import {
   setStoredMode,
   type AssistantMode,
 } from "./store/mode";
+import {
+  getTelegramPromptDecision,
+  setTelegramPromptDecision,
+  type TelegramPromptDecision,
+} from "./store/telegramPrompt";
 import type { AuthUser } from "./types/auth";
 
 type Tab = "chat" | "timeline" | "search" | "profile";
@@ -27,7 +33,7 @@ const TABS: Array<{ value: Tab; label: string; index: string }> = [
 function BootScreen() {
   return (
     <div className="boot-screen">
-      <p className="kicker">GORKY / WEB</p>
+      <p className="kicker">ЗАПИШИИ / WEB</p>
       <p className="boot-screen__text">Поднимаем связь…</p>
       <span className="boot-screen__line" aria-hidden="true" />
     </div>
@@ -52,6 +58,14 @@ function Workspace({
   const [refreshKey, setRefreshKey] = useState(0);
   const [mode, setMode] = useState<AssistantMode>(() => getStoredMode() ?? "text");
   const [pickerOpen, setPickerOpen] = useState(true);
+  const [voiceCallOpen, setVoiceCallOpen] = useState(false);
+  const [promptArmed, setPromptArmed] = useState(false);
+  const [promptDue, setPromptDue] = useState(false);
+  const [promptDismissed, setPromptDismissed] = useState(false);
+  const [promptDecision, setPromptDecision] =
+    useState<TelegramPromptDecision | null>(() =>
+      getTelegramPromptDecision(user.id),
+    );
   const { reminders, dismiss } = useReminders();
 
   const onEventChanged = useCallback(() => {
@@ -61,12 +75,55 @@ function Workspace({
   const changeMode = useCallback((next: AssistantMode) => {
     setMode(next);
     setStoredMode(next);
+    setPromptArmed(true);
   }, []);
 
   const selectInitialMode = useCallback((next: AssistantMode) => {
     setMode(next);
     setStoredMode(next);
     setPickerOpen(false);
+    setPromptArmed(true);
+  }, []);
+
+  useEffect(() => {
+    if (
+      !promptArmed ||
+      promptDismissed ||
+      promptDecision === "never" ||
+      user.telegram_linked
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => setPromptDue(true), 20_000);
+    return () => window.clearTimeout(timer);
+  }, [promptArmed, promptDecision, promptDismissed, user.telegram_linked]);
+
+  const promptOpen =
+    promptDue &&
+    !voiceCallOpen &&
+    !promptDismissed &&
+    !user.telegram_linked &&
+    promptDecision !== "never";
+
+  const dismissPrompt = useCallback(
+    (decision: TelegramPromptDecision) => {
+      setTelegramPromptDecision(user.id, decision);
+      setPromptDecision(decision);
+      setPromptDismissed(true);
+      setPromptDue(false);
+    },
+    [user.id],
+  );
+
+  const goToTelegramProfile = useCallback(() => {
+    setPromptDismissed(true);
+    setPromptDue(false);
+    setTab("profile");
+    window.setTimeout(() => {
+      document
+        .getElementById("telegram-card")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
   }, []);
 
   return (
@@ -74,7 +131,7 @@ function Workspace({
       <header className="topbar">
         <div className="brand">
           <span className="brand__mark">■</span>
-          <span className="brand__name">ГОРЬКИЙ</span>
+          <span className="brand__name">ЗапишИИ</span>
           <span className="brand__slash">/</span>
           <span className="brand__role">ассистент</span>
         </div>
@@ -112,6 +169,7 @@ function Workspace({
             timezone={user.timezone}
             mode={mode}
             onModeChange={changeMode}
+            onVoiceCallChange={setVoiceCallOpen}
           />
         )}
         {tab === "timeline" && <TimelinePage refreshKey={refreshKey} />}
@@ -126,14 +184,21 @@ function Workspace({
       </main>
 
       <footer className="app-footer">
-        <span>GORKY CODE / 2026</span>
-        <span>Telegram + Web / один backend</span>
+        <span>ЗАПИШИИ / 2026</span>
+        <span>Уведомления — в Telegram</span>
         <span>{user.email ?? "web account"}</span>
       </footer>
 
       {pickerOpen && (
         <ModePicker defaultMode={mode} onSelect={selectInitialMode} />
       )}
+
+      <TelegramPrompt
+        open={promptOpen}
+        onGoToProfile={goToTelegramProfile}
+        onLater={() => dismissPrompt("later")}
+        onNever={() => dismissPrompt("never")}
+      />
     </div>
   );
 }

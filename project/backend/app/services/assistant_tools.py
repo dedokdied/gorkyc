@@ -29,7 +29,8 @@ from app.services.search import SearchService
 
 _EXPLICIT_TIME = re.compile(
     r"(?:\b(?:в|к)\s+\d{1,2}(?!\d)|\d{1,2}:\d{2}|\b\d{1,2}\s*"
-    r"(?:час|часа|часов|утра|вечера|дня|ночи)\b|полдень|полночь)",
+    r"(?:час|часа|часов|утра|вечера|дня|ночи)\b|"
+    r"\b(?:утром|днём|днем|вечером|ночью)\b|полдень|полночь)",
     re.IGNORECASE,
 )
 
@@ -181,19 +182,24 @@ class DbToolExecutor:
                     missing=["due_at"],
                 )
             payload["due_at"] = parsed.due_at or parsed.starts_at
-        elif (
-            args.type == "task"
-            and parsed is not None
-            and parsed.date is None
-            and parsed.time is not None
-        ):
-            # «Купить хлеб в 9 утра» has a time but no day. Creating a
-            # dateless task silently loses the user's intent; ask once.
-            raise ClarificationNeeded(
-                "На какой день поставить задачу?",
-                missing=["due_at"],
-            )
-        elif parsed is not None and (parsed.due_at or parsed.starts_at):
+        elif args.type == "task":
+            # A task needs a concrete day and time. The spec does not define
+            # a default 09:00, so never invent one: ask for the missing part.
+            if parsed is None or (parsed.due_at is None and parsed.starts_at is None):
+                raise ClarificationNeeded(
+                    "На когда поставить задачу? Назови дату и время.",
+                    missing=["due_at"],
+                )
+            if parsed.date is None and parsed.time is not None:
+                raise ClarificationNeeded(
+                    "На какой день поставить задачу?",
+                    missing=["due_at"],
+                )
+            if self._needs_time(parsed, args.time_expression):
+                raise ClarificationNeeded(
+                    "Во сколько поставить задачу?",
+                    missing=["due_at"],
+                )
             payload["due_at"] = parsed.due_at or parsed.starts_at
 
         async with SessionLocal() as db:

@@ -30,7 +30,7 @@ export function ChatMessage({ entry, onSpeak }: Props) {
         <span className="message__avatar" aria-hidden="true">
           {isUser ? ">" : "■"}
         </span>
-        <span>{isUser ? (entry.voice ? "вы, голос" : "вы") : "горький"}</span>
+        <span>{isUser ? (entry.voice ? "вы, голос" : "вы") : "ЗапишИИ"}</span>
         {label && entry.action?.status === "done" && (
           <span className="message__action">{label}</span>
         )}

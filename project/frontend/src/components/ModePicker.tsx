@@ -26,7 +26,7 @@ const OPTIONS: Array<{
     title: "Голосовой режим",
     caption: "позвонить ассистенту",
     description:
-      "Звонок без текста и клавиатуры. Вы говорите — Горький слушает и отвечает голосом.",
+      "Звонок без текста и клавиатуры. Вы говорите — ЗапишИИ слушает и отвечает голосом.",
   },
 ];
 
@@ -35,7 +35,7 @@ export function ModePicker({ defaultMode, onSelect }: Props) {
     <div className="mode-picker" role="dialog" aria-modal="true" aria-labelledby="mode-title">
       <div className="mode-picker__card">
         <header className="mode-picker__head">
-          <p className="kicker">GORKY / РЕЖИМ СВЯЗИ</p>
+          <p className="kicker">ЗАПИШИИ / РЕЖИМ СВЯЗИ</p>
           <h2 id="mode-title">
             Как вам удобнее
             <br />

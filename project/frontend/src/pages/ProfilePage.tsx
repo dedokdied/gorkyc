@@ -84,7 +84,7 @@ export function ProfilePage({ user, onLink, onUpdate }: Props) {
         <div>
           <p className="kicker">Аккаунт / 04</p>
           <h1>Профиль</h1>
-          <p className="hint">Один аккаунт для сайта и Telegram.</p>
+          <p className="hint">Настройки аккаунта и подключение уведомлений.</p>
         </div>
       </header>
 
@@ -150,22 +150,31 @@ export function ProfilePage({ user, onLink, onUpdate }: Props) {
           </form>
         </article>
 
-        <article className="profile-card">
-          <p className="profile-card__label">Telegram</p>
+        <article
+          className="profile-card profile-card--telegram"
+          id="telegram-card"
+        >
+          <p className="profile-card__label">Telegram · уведомления</p>
 
           {user.telegram_linked ? (
             <>
               <p className="profile-status">
                 <span className="status-dot" aria-hidden="true" />
-                Подключён
+                Уведомления включены
                 {user.telegram_username ? ` · @${user.telegram_username}` : ""}
               </p>
               <p className="hint">
-                События из Telegram и сайта синхронизированы: это один общий список.
+                Напоминания о задачах и встречах приходят в Telegram. События
+                на сайте и в боте — один общий список.
               </p>
             </>
           ) : (
             <>
+              <p className="profile-notice">
+                <strong>Уведомления приходят в Telegram.</strong> Подключите
+                бота к аккаунту, иначе напоминания не будут приходить в
+                Telegram.
+              </p>
               <p className="hint">
                 Откройте бота в Telegram и отправьте <code>/link</code>. Он пришлёт
                 код из 5 цифр — введите его здесь.

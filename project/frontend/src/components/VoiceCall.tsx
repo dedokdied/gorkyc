@@ -28,7 +28,7 @@ function statusFor(phase: Phase): string {
     case "thinking":
       return "Думаю…";
     case "speaking":
-      return "Горький говорит";
+      return "ЗапишИИ говорит";
     default:
       return "Связь прервалась";
   }
@@ -301,7 +301,7 @@ export function VoiceCall({ open, greeting, onTurn, onClose }: Props) {
       <header className="call__head">
         <span className="call__brand">
           <span className="call__brand-mark" aria-hidden="true" />
-          ГОРЬКИЙ / НА ЛИНИИ
+          ЗАПИШИИ / НА ЛИНИИ
         </span>
         <span className="call__secure">
           <span className="status-dot" aria-hidden="true" />
@@ -316,7 +316,7 @@ export function VoiceCall({ open, greeting, onTurn, onClose }: Props) {
           <span className="call__orb-core" />
         </div>
 
-        <p className="call__name">Горький</p>
+        <p className="call__name">ЗапишИИ</p>
         <p className="call__status" aria-live="polite">
           {statusFor(phase)}
         </p>
