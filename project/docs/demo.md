@@ -11,7 +11,7 @@ python scripts/import_csv.py --user demo
 
 Backend: `uvicorn app.main:app --reload`. Web: `npm run dev` в
 `project/frontend`. Открыть `http://localhost:5173`. Публичный прототип:
-<https://harshly-lucrative-flycatcher.cloudpub.ru>.
+<https://lustily-endowed-newfoundland.cloudpub.ru>.
 
 Без внешних ключей работает `LLM_PROVIDER=rule-based`. Голос в вебе не
 требует ключей: распознавание и озвучка идут через Web Speech API прямо в

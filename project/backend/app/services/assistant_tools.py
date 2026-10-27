@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import re
 from datetime import datetime, time, timedelta
 from typing import Any
@@ -91,6 +92,46 @@ class DbToolExecutor:
     def _needs_time(parsed: ParsedTime, expression: str | None) -> bool:
         return parsed.starts_at is not None and parsed.is_ambiguous and not DbToolExecutor._has_explicit_time(expression)
 
+    @staticmethod
+    def _next_recurring_start(
+        parsed: ParsedTime,
+        recurrence: str,
+        timezone: str,
+    ) -> ParsedTime:
+        """Turn «в 9 утра» + recurrence into the next real occurrence.
+
+        A recurring event needs a concrete first date: without one the row is
+        saved dateless, and the assistant can truthfully say only «создано»,
+        not when it starts. Use the next matching wall-clock time in the
+        user's timezone.
+        """
+        if parsed.time is None:
+            return parsed
+        zone = _zone(timezone)
+        now = datetime.now(zone)
+        candidate = datetime.combine(now.date(), parsed.time, tzinfo=zone)
+        if recurrence == "daily":
+            while candidate <= now:
+                candidate += timedelta(days=1)
+        elif recurrence == "weekly":
+            while candidate <= now:
+                candidate += timedelta(days=7)
+        elif recurrence == "monthly":
+            while candidate <= now:
+                year = candidate.year + (candidate.month // 12)
+                month = candidate.month % 12 + 1
+                day = min(candidate.day, calendar.monthrange(year, month)[1])
+                candidate = candidate.replace(year=year, month=month, day=day)
+        return ParsedTime(
+            starts_at=candidate,
+            due_at=candidate,
+            date=candidate,
+            time=parsed.time,
+            duration_minutes=parsed.duration_minutes,
+            is_ambiguous=False,
+            confidence=parsed.confidence,
+        )
+
     async def create_event(
         self,
         user_id: str,
@@ -98,6 +139,13 @@ class DbToolExecutor:
         timezone: str,
     ) -> dict[str, Any]:
         parsed = self._parse(args.time_expression, timezone)
+        if (
+            parsed is not None
+            and args.recurrence is not None
+            and parsed.date is None
+            and parsed.time is not None
+        ):
+            parsed = self._next_recurring_start(parsed, args.recurrence, timezone)
         payload: dict[str, Any] = {
             "type": args.type,
             "title": args.title,
@@ -133,6 +181,18 @@ class DbToolExecutor:
                     missing=["due_at"],
                 )
             payload["due_at"] = parsed.due_at or parsed.starts_at
+        elif (
+            args.type == "task"
+            and parsed is not None
+            and parsed.date is None
+            and parsed.time is not None
+        ):
+            # «Купить хлеб в 9 утра» has a time but no day. Creating a
+            # dateless task silently loses the user's intent; ask once.
+            raise ClarificationNeeded(
+                "На какой день поставить задачу?",
+                missing=["due_at"],
+            )
         elif parsed is not None and (parsed.due_at or parsed.starts_at):
             payload["due_at"] = parsed.due_at or parsed.starts_at
 
@@ -163,6 +223,13 @@ class DbToolExecutor:
             patch["recurrence"] = args.recurrence
 
         parsed = self._parse(args.time_expression, timezone)
+        if (
+            parsed is not None
+            and args.recurrence is not None
+            and parsed.date is None
+            and parsed.time is not None
+        ):
+            parsed = self._next_recurring_start(parsed, args.recurrence, timezone)
         if parsed is not None:
             if parsed.starts_at is not None:
                 patch["starts_at"] = parsed.starts_at
