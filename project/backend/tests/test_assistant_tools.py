@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 import pytest
 
@@ -59,12 +60,14 @@ async def test_task_without_date_asks_for_date_and_time() -> None:
     assert exc_info.value.missing == ["due_at"]
 
 
-def test_period_week_starts_today() -> None:
+def test_period_week_is_current_calendar_week() -> None:
     start, end = DbToolExecutor._period("week", "Europe/Moscow")
 
     assert start is not None
     assert end is not None
+    assert start.weekday() == 0  # Monday
     assert (end - start).days == 7
+    assert start.date() <= datetime.now(start.tzinfo).date() < end.date()
 
 
 def test_as_uuid_accepts_uuid_and_string() -> None:

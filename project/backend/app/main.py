@@ -21,8 +21,8 @@ from app.integrations.telegram_notifier import TelegramNotifier
 from app.services.assistant import Assistant
 from app.services.assistant_tools import DbToolExecutor
 from app.services.conversation_db import DbConversationStore
-from app.services.pending_db import DbPendingActionStore
 from app.services.events import ConflictError, DomainValidationError, NotFoundError
+from app.services.pending_db import DbPendingActionStore
 from app.services.reminders import ReminderService
 from app.services.voice import VoiceService
 from app.workers.reminders import ReminderWorker

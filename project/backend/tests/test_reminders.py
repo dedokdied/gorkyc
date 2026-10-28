@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.event import Event, EventSource, EventStatus, EventType
 from app.models.user import User
-from app.services.events import EventService
 from app.services.reminders import ReminderService, format_reminder, telegram_id_from_peer
 from app.workers.reminders import ReminderWorker
 
@@ -251,6 +250,38 @@ def test_format_reminder_uses_event_timezone() -> None:
 
     assert "10:00" in text
     assert "23.10.2026" in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event_type", ["task", "meeting", "reminder"])
+async def test_inbox_and_ack_cover_all_notifiable_types(client, event_type: str) -> None:
+    notify_at = datetime.now(UTC) - timedelta(minutes=5)
+    payload: dict[str, object] = {
+        "type": event_type,
+        "title": "Проверить inbox",
+        "timezone": "Europe/Moscow",
+    }
+    if event_type == "meeting":
+        payload["starts_at"] = notify_at.isoformat()
+        payload["duration_minutes"] = 30
+    else:
+        payload["due_at"] = notify_at.isoformat()
+
+    created = await client.post("/api/v1/events", json=payload)
+    assert created.status_code == 201
+    event_id = created.json()["id"]
+
+    inbox = await client.get("/api/v1/reminders/inbox")
+    assert inbox.status_code == 200
+    assert event_id in {item["id"] for item in inbox.json()}
+
+    acked = await client.post(f"/api/v1/reminders/{event_id}/ack")
+    assert acked.status_code == 200
+    assert acked.json()["id"] == event_id
+
+    inbox_after = await client.get("/api/v1/reminders/inbox")
+    assert inbox_after.status_code == 200
+    assert event_id not in {item["id"] for item in inbox_after.json()}
 
 
 @pytest.mark.asyncio

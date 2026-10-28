@@ -79,7 +79,10 @@ app/
 - `integrations/llm.py` — API-first через OpenAI-compatible протокол,
   `FallbackLLM`, `RuleBasedLLM`; локальный Ollama — опция.
 - `services/assistant.py` — цикл LLM → tools → ответ, уточнения.
-- `services/dialogue.py` — pending actions; пока in-memory.
+- `services/dialogue.py` — контракты pending actions и истории диалога,
+  in-memory реализации для тестов.
+- `services/pending_db.py`, `services/conversation_db.py` — рабочие
+  PostgreSQL-реализации: уточнения и история переживают рестарт.
 - `tests/test_chat.py` — создание, уточнение, список, fallback.
 
 `ToolExecutor` — протокол-стык с A: `services/assistant_tools.py` реализует

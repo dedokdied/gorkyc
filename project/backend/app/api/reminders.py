@@ -62,7 +62,9 @@ async def acknowledge_reminder(
         select(Event).where(
             Event.id == event_id,
             Event.user_id == user_id,
-            Event.type == EventType.reminder,
+            Event.type.in_(
+                (EventType.task, EventType.meeting, EventType.reminder)
+            ),
         )
     )
     if event is None:

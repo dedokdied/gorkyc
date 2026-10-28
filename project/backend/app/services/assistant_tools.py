@@ -358,7 +358,11 @@ class DbToolExecutor:
         if period == "tomorrow":
             return start_today + timedelta(days=1), start_today + timedelta(days=2)
         if period == "week":
-            return start_today, start_today + timedelta(days=7)
+            # «Эта неделя» — текущая календарная неделя (пн–вс), а не
+            # скользящие 7 дней: иначе в субботу ответ захватывает следующую
+            # неделю и расходится с разбором «до конца недели».
+            monday = start_today - timedelta(days=today.weekday())
+            return monday, monday + timedelta(days=7)
         if period == "upcoming":
             return datetime.now(zone), start_today + timedelta(days=30)
         return None, None

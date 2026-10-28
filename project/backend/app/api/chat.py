@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-
 from app.schemas.chat import (
     ChatHistoryMessage,
     ChatRequest,
