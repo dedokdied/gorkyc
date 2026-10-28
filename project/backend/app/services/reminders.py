@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
@@ -16,6 +16,11 @@ from app.models.user import User
 logger = get_logger("assistant.reminders")
 
 _TELEGRAM_PREFIX = "telegram:"
+_TYPE_LABELS = {
+    EventType.task: "Задача",
+    EventType.meeting: "Встреча",
+    EventType.reminder: "Напоминание",
+}
 
 
 def telegram_id_from_peer(peer_id: str | None) -> int | None:
@@ -35,9 +40,11 @@ def format_reminder(event: Event) -> str:
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo(settings.app_tz)
 
-    lines = [f"Напоминание: {event.title}"]
-    if event.due_at is not None:
-        local_due = event.due_at.astimezone(zone)
+    label = _TYPE_LABELS.get(event.type, "Напоминание")
+    lines = [f"{label}: {event.title}"]
+    moment = event.due_at or event.starts_at
+    if moment is not None:
+        local_due = moment.astimezone(zone)
         lines.append(f"Когда: {local_due:%d.%m.%Y %H:%M}")
     if event.description:
         lines.append(event.description)
@@ -60,6 +67,8 @@ class ReminderService:
         limit: int = 50,
     ) -> int:
         moment = now or datetime.now(UTC)
+        grace = timedelta(minutes=max(0, settings.reminders_grace_minutes))
+        notify_at = func.coalesce(Event.due_at, Event.starts_at)
         sent = 0
 
         async with self._session_factory() as db:
@@ -67,13 +76,22 @@ class ReminderService:
                 select(Event, User.openclaw_peer_id, User.telegram_id)
                 .join(User, User.id == Event.user_id)
                 .where(
-                    Event.type == EventType.reminder,
+                    Event.type.in_(
+                        (EventType.task, EventType.meeting, EventType.reminder)
+                    ),
                     Event.status == EventStatus.planned,
                     Event.reminder_sent_at.is_(None),
-                    Event.due_at.is_not(None),
-                    Event.due_at <= moment,
+                    notify_at.is_not(None),
+                    notify_at <= moment,
+                    notify_at >= moment - grace,
+                    # Web-only and demo users must not occupy the batch limit:
+                    # otherwise their stale events can starve real deliveries.
+                    or_(
+                        User.telegram_id.is_not(None),
+                        User.openclaw_peer_id.like(f"{_TELEGRAM_PREFIX}%"),
+                    ),
                 )
-                .order_by(Event.due_at.asc())
+                .order_by(notify_at.asc())
                 .limit(limit)
                 .with_for_update(skip_locked=True, of=Event)
             )
@@ -91,11 +109,14 @@ class ReminderService:
 
                 try:
                     await self._notifier.send(telegram_id, format_reminder(event))
-                except Exception:
-                    logger.exception(
+                except Exception as exc:
+                    # The notifier message is sanitized: HTTP errors must not
+                    # carry the Telegram URL with the bot token into logs.
+                    logger.error(
                         "reminder_send_failed",
                         event_id=str(event.id),
                         telegram_id=telegram_id,
+                        error=str(exc),
                     )
                     continue
 

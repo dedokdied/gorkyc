@@ -15,6 +15,10 @@ def configure_logging(level: int = logging.INFO) -> None:
         level=level,
         format="%(message)s",
     )
+    # httpx logs the full request URL at INFO. Telegram puts the bot token in
+    # the URL, so that would write a secret into container logs on every send.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

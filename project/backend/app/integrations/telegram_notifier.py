@@ -40,5 +40,19 @@ class TelegramNotifier:
                 },
             )
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # The raw httpx error string contains the request URL, and Telegram
+            # puts the bot token there. Keep only the API description.
+            description = ""
+            try:
+                payload = exc.response.json()
+            except ValueError:
+                payload = {}
+            if isinstance(payload, dict):
+                description = str(payload.get("description") or "")
+            detail = f"{exc.response.status_code} {description}".strip()
+            raise TelegramNotifierError(f"Telegram send failed: {detail}") from None
         except httpx.HTTPError as exc:
-            raise TelegramNotifierError("Telegram send failed") from exc
+            raise TelegramNotifierError(
+                f"Telegram send failed: {type(exc).__name__}"
+            ) from None

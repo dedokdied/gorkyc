@@ -5,6 +5,7 @@
 ```
 docs/
 ├── README.md
+├── tz-requests.md      # все запросы из ТЗ и ожидаемое поведение
 ├── api/
 │   └── README.md        # контракт API, DTO, ошибки
 └── decisions/

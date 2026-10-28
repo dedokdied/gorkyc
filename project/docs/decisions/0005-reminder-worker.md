@@ -6,9 +6,18 @@
 
 В `PLAN.md` для напоминаний указан APScheduler с PostgreSQL job store.
 Фактическая реализация — `ReminderWorker` на `asyncio`: раз в
-`REMINDERS_INTERVAL_SECONDS` он выбирает просроченные `reminder`-события
-(`due_at <= now`, `reminder_sent_at IS NULL`), отправляет их в Telegram и
-проставляет `reminder_sent_at`.
+`REMINDERS_INTERVAL_SECONDS` он выбирает задачи, встречи и напоминания
+(`coalesce(due_at, starts_at) <= now`, `reminder_sent_at IS NULL`,
+`status = planned`), отправляет их в Telegram и проставляет
+`reminder_sent_at`.
+
+Уведомление приходит в момент `due_at` для задач/напоминаний и `starts_at`
+для встреч — так же, как обещает интерфейс. Окно досылки
+`REMINDERS_GRACE_MINUTES` (по умолчанию 60 минут) ограничивает выборку
+свежими событиями: после деплоя или простоя worker не рассылает старые
+записи. Пользователи без Telegram (`telegram_id IS NULL` и peer_id не
+`telegram:*`) исключены из выборки, чтобы их события не занимали лимит
+пакета и не вытесняли реальные доставки.
 
 ## Решение
 

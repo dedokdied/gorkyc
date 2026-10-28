@@ -57,8 +57,11 @@ app/
 - `user_id` берётся из auth-контекста, никогда из аргументов LLM.
 - Все tool-аргументы проходят Pydantic-валидацию.
 - Backend не импортирует aiogram: Telegram-бот общается с ним по HTTP.
-- Напоминания: фоновый worker в backend раз в `REMINDERS_INTERVAL_SECONDS`
-  выбирает due-события и отправляет их через `TelegramNotifier`.
+- Уведомления: фоновый worker в backend раз в `REMINDERS_INTERVAL_SECONDS`
+  выбирает задачи, встречи и напоминания, у которых `due_at`/`starts_at`
+  наступил, и отправляет их через `TelegramNotifier`. Окно досылки —
+  `REMINDERS_GRACE_MINUTES` (по умолчанию 60), чтобы после деплоя не
+  рассылать старые события. Обрабатываются только Telegram-пользователи.
 
 ## Клиенты
 

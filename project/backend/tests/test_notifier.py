@@ -45,3 +45,24 @@ async def test_notifier_maps_http_error() -> None:
         notifier = TelegramNotifier(token="123:abc", client=http_client)
         with pytest.raises(TelegramNotifierError):
             await notifier.send(42, "Пора на встречу")
+
+
+@pytest.mark.asyncio
+async def test_notifier_does_not_leak_token_in_status_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"ok": False, "description": "Bad Request: chat not found"},
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        notifier = TelegramNotifier(token="123:abc", client=http_client)
+        with pytest.raises(TelegramNotifierError) as captured:
+            await notifier.send(1, "Пора на встречу")
+
+    message = str(captured.value)
+    assert "chat not found" in message
+    assert "123:abc" not in message
+    assert captured.value.__cause__ is None

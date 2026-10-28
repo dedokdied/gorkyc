@@ -65,8 +65,8 @@
 | DELETE | `/chat/history?session_id=...` | B | очистить диалог |
 | GET | `/sessions/{id}/messages` | B | alias истории диалога |
 | DELETE | `/sessions/{id}/messages` | B | alias очистки диалога |
-| GET | `/reminders/inbox` | A | напоминания для in-app баннера |
-| POST | `/reminders/{id}/ack` | A | закрыть напоминание на сайте |
+| GET | `/reminders/inbox` | A | задачи, встречи и напоминания для in-app баннера |
+| POST | `/reminders/{id}/ack` | A | закрыть уведомление на сайте |
 | GET | `/healthz`, `/readyz` | вместе | health |
 
 ## Auth DTO
@@ -339,11 +339,15 @@ localStorage. История и pending-actions пока in-memory.
 
 ## Напоминания на сайте
 
-- `GET /reminders/inbox` — напоминания, у которых `due_at <= now`,
-  `status=planned` и `web_ack_at IS NULL`.
-- `POST /reminders/{id}/ack` — закрыть напоминание в веб-интерфейсе
+- `GET /reminders/inbox` — задачи, встречи и напоминания, у которых
+  `coalesce(due_at, starts_at) <= now` (в пределах
+  `REMINDERS_GRACE_MINUTES`), `status=planned` и `web_ack_at IS NULL`.
+  Для встреч используется `starts_at`, для задач и напоминаний — `due_at`.
+- `POST /reminders/{id}/ack` — закрыть уведомление в веб-интерфейсе
   (`web_ack_at=now`). Telegram-доставка учитывается отдельно через
   `reminder_sent_at`, поэтому баннер и сообщение бота не мешают друг другу.
+- При переносе события (`PATCH /events/{id}` с новым временем) оба маркера
+  сбрасываются, чтобы уведомление пришло по новому времени.
 
 ## Примеры сценариев
 

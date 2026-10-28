@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     reminders_enabled: bool = True
     reminders_interval_seconds: float = 30.0
+    reminders_grace_minutes: int = 60
     web_origin: str = "http://localhost:5173"
     web_auth_secret: str = "dev-only-change-me"
     web_token_ttl_seconds: int = 604800

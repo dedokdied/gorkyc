@@ -64,7 +64,7 @@ daemon.
 | `DATABASE_URL` | `postgresql+asyncpg://...` |
 | `TELEGRAM_BOT_TOKEN` | токен бота и отправка напоминаний |
 | `BOT_INTERNAL_SECRET` | доверенный заголовок бота к API |
-| `REMINDERS_ENABLED`, `REMINDERS_INTERVAL_SECONDS` | worker напоминаний |
+| `REMINDERS_ENABLED`, `REMINDERS_INTERVAL_SECONDS`, `REMINDERS_GRACE_MINUTES` | worker уведомлений: период опроса и окно досылки |
 | `BACKEND_URL` | URL API для бота |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | API-first или `rule-based` |
 | `STT_PROVIDER`, `STT_API_KEY`, `STT_MODEL`, `STT_BASE_URL` | Whisper API или локальный faster-whisper |

@@ -236,6 +236,9 @@ class EventService:
         new_ends = _ensure_aware(fields["ends_at"]) if "ends_at" in fields else event.ends_at
         new_due = _ensure_aware(fields["due_at"]) if "due_at" in fields else event.due_at
         new_duration = fields.get("duration_minutes", event.duration_minutes)
+        old_starts = event.starts_at
+        old_due = event.due_at
+        old_recurrence = event.recurrence
 
         if new_title is None:
             raise DomainValidationError("title_must_not_be_null")
@@ -299,6 +302,16 @@ class EventService:
         event.due_at = new_due
         event.duration_minutes = new_duration
         event.search_text = _build_search_text(new_title, new_description)
+        # A moved event is a new notification: without resetting the delivery
+        # markers the worker and the in-app banner would consider it already
+        # handled at the old time.
+        if event.status == ModelEventStatus.planned and (
+            old_starts != new_starts
+            or old_due != new_due
+            or old_recurrence != new_recurrence
+        ):
+            event.reminder_sent_at = None
+            event.web_ack_at = None
         event.updated_at = datetime.now(UTC)
 
         try:
@@ -313,6 +326,9 @@ class EventService:
         event = await self.repo.get(_uid(user_id), _uid(event_id))
         if event is None:
             raise NotFoundError("event_not_found")
+        # Retries and double taps must not create a second recurrence.
+        if event.status != ModelEventStatus.planned:
+            return event_to_read(event)
         event.status = ModelEventStatus.done
         event.completed_at = datetime.now(UTC)
         event.updated_at = datetime.now(UTC)

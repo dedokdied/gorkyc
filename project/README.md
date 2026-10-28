@@ -10,6 +10,7 @@ Telegram MVP и веб-версия работают на одном backend, о
 - Web-версия: [`docs/web.md`](docs/web.md)
 - Сценарий демо: [`docs/demo.md`](docs/demo.md)
 - Тесты LLM по сценариям ТЗ: [`docs/llm-tests.md`](docs/llm-tests.md)
+- Все запросы из ТЗ и чек-лист: [`docs/tz-requests.md`](docs/tz-requests.md)
 - Роли и границы: [`ROLES.md`](ROLES.md)
 - Решения: [`docs/decisions/`](docs/decisions/)
 - Инфраструктура: [`infra/README.md`](infra/README.md)
@@ -34,9 +35,10 @@ Telegram MVP и веб-версия работают на одном backend, о
   озвучка ответов прямо в браузере), профиль с привязкой Telegram и таймзоной,
   in-app напоминания, монохромная мобильная вёрстка.
 - Поиск: FTS `russian` + `pg_trgm` (падежи и опечатки).
-- Напоминания: worker в backend + `TelegramNotifier` и баннер на сайте
-  (`/reminders/inbox`). В профиле явно указано, что уведомления приходят в
-  Telegram; после выбора режима сайт предлагает привязать бота.
+- Уведомления: worker в backend присылает в Telegram задачи, встречи и
+  напоминания к их времени; на сайте работает баннер (`/reminders/inbox`).
+  В профиле явно указано, что уведомления приходят в Telegram; после выбора
+  режима сайт предлагает привязать бота.
 - Повторяющиеся события: `daily`, `weekly`, `monthly`; следующий экземпляр
   создаётся при завершении.
 - Персистентные уточнения: `pending_actions` и история диалога в PostgreSQL.
